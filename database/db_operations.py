@@ -10,17 +10,25 @@ try:
 except ImportError:
     import cloud_config
 
+import time
+
 def connect_db():
-    if cloud_config.USE_CLOUD:
-        try:
-            conn = psycopg2.connect(cloud_config.DB_CONNECTION_STRING)
-            return conn
-        except Exception as e:
-            print(f"[ERROR] Cloud DB Connection Failed: {e}")
-            print("[INFO] Falling back to Local SQLite...")
+    retries = 3
+    for i in range(retries):
+        if cloud_config.USE_CLOUD:
+            try:
+                conn = psycopg2.connect(cloud_config.DB_CONNECTION_STRING, connect_timeout=5)
+                return conn
+            except Exception as e:
+                print(f"[RETRY {i+1}/{retries}] Cloud DB Connection Failed: {e}")
+                if i < retries - 1:
+                    time.sleep(1)
+                else:
+                    print("[INFO] Falling back to Local SQLite...")
+                    return sqlite3.connect(DB_PATH)
+        else:
             return sqlite3.connect(DB_PATH)
-    else:
-        return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(DB_PATH)
 
 def get_placeholder():
     return "%s" if cloud_config.USE_CLOUD else "?"
