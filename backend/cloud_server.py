@@ -17,6 +17,9 @@ app = Flask(__name__, template_folder=template_dir)
 CORS(app)
 app.secret_key = 'vidyalaya_ai_cloud_key_999'
 
+# Force Propagate Exceptions for detail
+app.config['PROPAGATE_EXCEPTIONS'] = True
+
 # Load settings from environment variables if they exist (for Render)
 USE_CLOUD = os.environ.get('USE_CLOUD', str(cloud_config.USE_CLOUD)).lower() == 'true'
 DB_URL = os.environ.get('DB_CONNECTION_STRING', cloud_config.DB_CONNECTION_STRING)
@@ -73,11 +76,11 @@ def dashboard():
         short_attendance = db_operations.get_short_attendance_students(org_id, 75.0) or []
         cameras = db_operations.get_org_cameras(org_id) or []
         
-        student_records = [r for r in records if r[2] and 'Teacher' not in r[2]]
-        teacher_records = [r for r in records if r[2] and 'Teacher' in r[2]]
+        student_records = [r for r in records if r[2] and 'Teacher' not in (r[2] or '')]
+        teacher_records = [r for r in records if r[2] and 'Teacher' in (r[2] or '')]
         
         return render_template('dashboard.html', 
-                               org_name=session['org_name'],
+                               org_name=session.get('org_name', 'Vidyalaya AI'),
                                student_records=student_records, 
                                teacher_records=teacher_records, 
                                short_attendance=short_attendance,
@@ -88,19 +91,12 @@ def dashboard():
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        # Log to stdout for Render logs
         print(f"DASHBOARD ERROR:\n{error_details}")
-        
-        # Friendly error message for the user with details for us to debug
         return f"""
         <div style="font-family: sans-serif; padding: 40px; background: #fff5f5; color: #c53030; border-radius: 12px; border: 1px solid #feb2b2; max-width: 800px; margin: 40px auto;">
-            <h1 style="margin-top: 0;">Oops! Something went wrong on the Cloud.</h1>
-            <p>Aapka Dashboard connect nahi ho pa raha hai. Ye details hamare liye zaroori hain:</p>
-            <div style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #fed7d7; font-family: monospace; white-space: pre-wrap; font-size: 13px; color: #2d3748;">
-{str(e)}<br><br>
-<b>Database URL:</b> {cloud_config.DB_CONNECTION_STRING.split('@')[-1] if cloud_config.DB_CONNECTION_STRING else 'Missing'}
-            </div>
-            <p style="margin-bottom: 0; margin-top: 20px;"><b>Kya karein?</b> Iska ek screenshot muje bhej dijiye taaki main turant theek kar sakun.</p>
+            <h1 style="margin-top: 0;">Dashboard Error</h1>
+            <p>Something went wrong while loading the dashboard.</p>
+            <pre style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #fed7d7; white-space: pre-wrap;">{str(e)}\n\n{error_details}</pre>
         </div>
         """, 500
 
@@ -109,15 +105,38 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# Add empty routes for sidebar links to prevent 404s/500s
+@app.route('/registration')
+@login_required
+def registration():
+    return render_template('registration.html', active_page='registration', is_cloud=True)
+
+@app.route('/settings')
+@login_required
+def settings():
+    return render_template('settings.html', active_page='settings', is_cloud=True)
+
+@app.route('/manage_users')
+@login_required
+def manage_users():
+    return render_template('manage_users.html', active_page='manage_users', is_cloud=True)
+
+@app.route('/manage_logs')
+@login_required
+def manage_logs():
+    return render_template('manage_logs.html', active_page='manage_logs', is_cloud=True)
+
 # API for Mobile App
 @app.route('/api/app/login', methods=['POST'])
 def mobile_login():
     data = request.json
-    org = db_operations.get_organization_by_login(data.get('email'), data.get('password'))
-    if org:
-        return jsonify({"status": "success", "token": f"Bearer {org[0]}", "org_name": org[1]}), 200
+    try:
+        org = db_operations.get_organization_by_login(data.get('email'), data.get('password'))
+        if org:
+            return jsonify({"status": "success", "token": f"Bearer {org[0]}", "org_name": org[1]}), 200
+    except:
+        pass
     return jsonify({"status": "error"}), 401
 
 if __name__ == '__main__':
-    # Cloud doesn't need the camera orchestrator
     app.run(host='0.0.0.0', port=8000)
