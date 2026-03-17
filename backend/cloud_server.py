@@ -43,6 +43,20 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+@app.route('/debug_network')
+def debug_network():
+    target = "db.dcrdwpkoytycopvnriqn.supabase.co"
+    results = {}
+    try:
+        import socket
+        results['hostname'] = target
+        results['all_ips'] = [x[4][0] for x in socket.getaddrinfo(target, 5432)]
+        results['ipv4_only'] = [x[4][0] for x in socket.getaddrinfo(target, 5432, socket.AF_INET)]
+    except Exception as e:
+        results['error'] = str(e)
+    
+    return jsonify(results)
+
 @app.route('/')
 def index_page():
     return render_template('index.html')
