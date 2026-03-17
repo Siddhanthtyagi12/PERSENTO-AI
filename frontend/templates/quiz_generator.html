@@ -1,0 +1,109 @@
+{% extends "layout.html" %}
+
+{% block title %}Smart Quiz Generator | Vidyalaya AI{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-8">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-4xl font-black text-white tracking-tight mb-2">Smart Quiz Generator</h1>
+            <p class="text-zinc-500 font-medium flex items-center gap-2">
+                <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                AI-Powered Question Creation
+            </p>
+        </div>
+    </div>
+
+    <div class="bg-zinc-700/40 p-8 rounded-[2rem] border border-white/5 shadow-sm space-y-6">
+        <div>
+            <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Lesson Notes / Content</label>
+            <textarea id="notes" 
+                class="w-full h-48 bg-zinc-900/50 border border-white/5 rounded-2xl text-zinc-200 p-5 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all resize-none"
+                placeholder="Paste your lesson notes, textbook snippets, or key points here..."></textarea>
+        </div>
+        
+        <button id="generate-btn" onclick="generateQuiz()" 
+            class="w-full bg-brand-600 hover:bg-brand-700 text-white py-4 rounded-2xl font-black text-sm tracking-[0.2em] uppercase transition-all shadow-xl shadow-brand-500/20 flex items-center justify-center gap-3 group active:scale-[0.98]">
+            <span>Generate Questions</span>
+            <i data-lucide="sparkles" class="w-5 h-5 group-hover:animate-pulse"></i>
+        </button>
+
+        <div id="loader" class="hidden flex flex-col items-center justify-center py-10 space-y-4">
+            <div class="w-10 h-10 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin"></div>
+            <p class="text-xs font-bold text-zinc-500 uppercase tracking-widest">AI is thinking...</p>
+        </div>
+    </div>
+
+    <div id="questions-container" class="space-y-6 pb-20">
+        <!-- Questions will appear here -->
+    </div>
+</div>
+
+<script>
+    async function generateQuiz() {
+        const notes = document.getElementById('notes').value;
+        const btn = document.getElementById('generate-btn');
+        const loader = document.getElementById('loader');
+        const container = document.getElementById('questions-container');
+
+        if (!notes.trim()) {
+            alert('Bhai, pehle kuch notes toh daalo!');
+            return;
+        }
+
+        btn.classList.add('hidden');
+        loader.classList.remove('hidden');
+        container.innerHTML = '';
+
+        try {
+            const response = await fetch('/api/generate_quiz', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: notes })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                data.questions.forEach((q, index) => {
+                    const qHtml = `
+                        <div class="bg-zinc-700/40 p-6 rounded-3xl border border-white/5 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div class="flex items-start gap-4 mb-6">
+                                <div class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-black text-sm shrink-0">
+                                    ${index + 1}
+                                </div>
+                                <p class="text-lg font-bold text-white leading-snug">${q.question}</p>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pl-12">
+                                ${q.options.map(opt => `
+                                    <div class="px-4 py-3 bg-zinc-900/40 border border-white/5 rounded-xl text-sm text-zinc-400 font-medium">
+                                        ${opt}
+                                    </div>
+                                `).join('')}
+                            </div>
+
+                            <div class="mt-6 pl-12 flex items-center gap-2">
+                                <span class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest px-2 py-1 bg-emerald-500/10 rounded-md">Correct Answer</span>
+                                <p class="text-sm font-bold text-zinc-100">${q.answer}</p>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += qHtml;
+                });
+                
+                // Re-initialize icons for new content if needed (though sparkles is enough)
+                if(window.lucide) lucide.createIcons();
+            } else {
+                alert('Dikat aa gayi: ' + (data.error || 'Something went wrong'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Server se connectivity fail ho gayi.');
+        } finally {
+            btn.classList.remove('hidden');
+            loader.classList.add('hidden');
+        }
+    }
+</script>
+{% endblock %}

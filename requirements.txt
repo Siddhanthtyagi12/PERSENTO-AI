@@ -1,0 +1,12 @@
+flask
+flask-cors
+opencv-python
+numpy
+mediapipe
+gunicorn
+psycopg2-binary
+pandas
+fpdf
+openpyxl
+twilio
+pyngrok

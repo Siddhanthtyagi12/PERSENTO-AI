@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: vidyalaya-ai-backend
+    env: python
+    buildCommand: pip install -r requirements_cloud.txt
+    startCommand: gunicorn backend.cloud_server:app
+    envVars:
+      - key: USE_CLOUD
+        value: "True"
+      - key: PORT
+        value: "8000"
