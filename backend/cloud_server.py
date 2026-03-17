@@ -43,6 +43,39 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+@app.route('/check_db_connectivity')
+def check_db_connectivity():
+    import psycopg2
+    regions = {
+        "ap-south-1": "3.108.251.216",
+        "ap-southeast-1": "52.77.146.31",
+        "eu-central-1": "18.198.145.223",
+        "us-east-1": "44.208.221.186",
+        "us-west-2": "35.160.209.8"
+    }
+    project_ref = "dcrdwpkoytycopvnriqn"
+    user = f"postgres.{project_ref}"
+    password = "siddhant@vanshika1234"
+    results = {}
+    
+    for r, ip in regions.items():
+        try:
+            conn = psycopg2.connect(
+                host=ip,
+                user=user,
+                password=password,
+                database="postgres",
+                port=6543, # Transaction pooler
+                sslmode="require",
+                connect_timeout=3
+            )
+            conn.close()
+            results[r] = "SUCCESS"
+        except Exception as e:
+            results[r] = f"FAILED: {str(e)}"
+            
+    return jsonify(results)
+
 @app.route('/debug_pooler')
 def debug_pooler():
     regions = ["ap-south-1", "ap-southeast-1", "us-east-1", "us-west-2", "eu-central-1"]
