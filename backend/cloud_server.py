@@ -43,68 +43,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route('/check_db_connectivity')
-def check_db_connectivity():
-    import psycopg2
-    regions = {
-        "ap-south-1": "3.108.251.216",
-        "ap-southeast-1": "52.77.146.31",
-        "eu-central-1": "18.198.145.223",
-        "us-east-1": "44.208.221.186",
-        "us-west-2": "35.160.209.8"
-    }
-    project_ref = "dcrdwpkoytycopvnriqn"
-    user = f"postgres.{project_ref}"
-    password = "siddhant@vanshika1234"
-    results = {}
-    
-    for r, ip in regions.items():
-        results[r] = {}
-        for port in [6543, 5432]:
-            try:
-                conn = psycopg2.connect(
-                    host=ip,
-                    user=user,
-                    password=password,
-                    database="postgres",
-                    port=port,
-                    sslmode="require",
-                    connect_timeout=3
-                )
-                conn.close()
-                results[r][str(port)] = "SUCCESS"
-            except Exception as e:
-                results[r][str(port)] = f"FAILED: {str(e)}"
-            
-    return jsonify(results)
-
-@app.route('/debug_pooler')
-def debug_pooler():
-    regions = ["ap-south-1", "ap-southeast-1", "us-east-1", "us-west-2", "eu-central-1"]
-    results = {}
-    import socket
-    for r in regions:
-        host = f"aws-0-{r}.pooler.supabase.com"
-        try:
-            results[r] = socket.gethostbyname(host)
-        except:
-            results[r] = "N/A"
-    return jsonify(results)
-
-@app.route('/debug_network')
-def debug_network():
-    target = "db.dcrdwpkoytycopvnriqn.supabase.co"
-    results = {}
-    try:
-        import socket
-        results['hostname'] = target
-        results['all_ips'] = [x[4][0] for x in socket.getaddrinfo(target, 5432)]
-        results['ipv4_only'] = [x[4][0] for x in socket.getaddrinfo(target, 5432, socket.AF_INET)]
-    except Exception as e:
-        results['error'] = str(e)
-    
-    return jsonify(results)
-
 @app.route('/')
 def index_page():
     return render_template('index.html')
