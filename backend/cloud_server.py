@@ -47,6 +47,23 @@ def login_required(f):
 def index_page():
     return render_template('index.html')
 
+@app.route('/register_school', methods=['GET', 'POST'])
+def register_school():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        try:
+            org_id = db_operations.register_organization(name, email, password)
+            if org_id:
+                flash('Registration Successful! Please Login', 'success')
+                return redirect(url_for('login'))
+            else:
+                flash('Email already registered or error occurred', 'error')
+        except Exception as e:
+            flash(f'Registration Error: {str(e)}', 'error')
+    return render_template('register_school.html', is_cloud=True)
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
