@@ -59,20 +59,22 @@ def check_db_connectivity():
     results = {}
     
     for r, ip in regions.items():
-        try:
-            conn = psycopg2.connect(
-                host=ip,
-                user=user,
-                password=password,
-                database="postgres",
-                port=6543, # Transaction pooler
-                sslmode="require",
-                connect_timeout=3
-            )
-            conn.close()
-            results[r] = "SUCCESS"
-        except Exception as e:
-            results[r] = f"FAILED: {str(e)}"
+        results[r] = {}
+        for port in [6543, 5432]:
+            try:
+                conn = psycopg2.connect(
+                    host=ip,
+                    user=user,
+                    password=password,
+                    database="postgres",
+                    port=port,
+                    sslmode="require",
+                    connect_timeout=3
+                )
+                conn.close()
+                results[r][str(port)] = "SUCCESS"
+            except Exception as e:
+                results[r][str(port)] = f"FAILED: {str(e)}"
             
     return jsonify(results)
 
