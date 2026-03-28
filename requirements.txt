@@ -1,0 +1,13 @@
+flask
+flask-cors
+psycopg2-binary
+numpy
+pandas
+fpdf
+openpyxl
+gunicorn
+google-genai
+python-dotenv
+opencv-python-headless
+mediapipe
+requests
