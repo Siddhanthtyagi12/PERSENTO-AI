@@ -76,7 +76,14 @@ class CameraWorker(Process):
 
         # Video Setup
         try:
-            src = int(self.source) if str(self.source).isdigit() else self.source
+            # Clean source (Strip spaces and lower the protocol)
+            src_str = str(self.source).strip()
+            if "://" in src_str:
+                parts = src_str.split("://", 1)
+                src_str = f"{parts[0].lower()}://{parts[1]}"
+            
+            src = int(src_str) if src_str.isdigit() else src_str
+            
             if isinstance(src, int):
                 cap = cv2.VideoCapture(src, cv2.CAP_DSHOW)
             else:

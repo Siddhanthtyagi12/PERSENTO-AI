@@ -314,6 +314,11 @@ def settings():
         
         if action == 'add_camera':
             source = request.form.get('source', '').strip()
+            # Clean protocol to lowercase for compatibility (e.g., HTTP:// -> http://)
+            if "://" in source:
+                parts = source.split("://", 1)
+                source = f"{parts[0].lower()}://{parts[1]}"
+            
             label = request.form.get('label', '').strip()
             
             # Validation Step
@@ -408,6 +413,181 @@ def reset_system():
     db_operations.reset_org_data(org_id)
     flash('System Reset Successful! All data has been cleared.', 'success')
     return redirect(url_for('settings'))
+
+@app.route('/fees', methods=['GET', 'POST'])
+@login_required
+def fees_page():
+    org_id = session['org_id']
+    if request.method == 'POST':
+        user_id = request.form.get('user_id')
+        total_fee = float(request.form.get('total_fee', 0))
+        paid_amount = float(request.form.get('paid_amount', 0))
+        db_operations.update_fee_record(user_id, org_id, total_fee, paid_amount)
+        flash("Fee record updated successfully!", "success")
+        return redirect(url_for('fees_page'))
+
+    fee_records = db_operations.get_all_fees(org_id)
+    top_defaulters = db_operations.get_top_defaulters(org_id)
+    
+    # Logic: Define ALL standard classes to ensure they appear even if empty
+    STANDARD_CLASSES = [
+        "Pre-Nursery", "Nursery", "LKG", "UKG", 
+        "1st", "2nd", "3rd", "4th", "5th", "6th", 
+        "7th", "8th", "9th", "10th", "11th", "12th"
+    ]
+    
+    # Initialize groups with standard classes
+    grouped_fees = {cls: {"records": [], "total_due": 0} for cls in STANDARD_CLASSES}
+    
+    for f in fee_records:
+        # Normalize class name to match standard list if possible
+        raw_cls = str(f[2]).strip()
+        # Find closest match or keep raw
+        cls = next((sc for sc in STANDARD_CLASSES if raw_cls.lower() in sc.lower() or sc.lower() in raw_cls.lower()), raw_cls)
+        
+        if cls not in grouped_fees:
+            grouped_fees[cls] = {"records": [], "total_due": 0}
+        grouped_fees[cls]["records"].append(f)
+        grouped_fees[cls]["total_due"] += (f[5] or 0)
+        
+    # Sorted list for template
+    all_seen_classes = list(grouped_fees.keys())
+    
+    def class_sort_key(cls_name):
+        try: return STANDARD_CLASSES.index(cls_name)
+        except: return 999
+        
+    sorted_classes = sorted(all_seen_classes, key=class_sort_key)
+    
+    return render_template('fees.html', 
+                          grouped_fees=grouped_fees, 
+                          sorted_classes=sorted_classes,
+                          top_defaulters=top_defaulters, 
+                          active_page='fees')
+
+@app.route('/performance')
+@login_required
+def performance_page():
+    org_id = session['org_id']
+    summary = db_operations.get_performance_summary(org_id)
+    activity_stars = db_operations.get_activity_stars(org_id)
+    
+    # Class-wise grouping for performance
+    grouped_perf = {}
+    classes = []
+    for s in summary:
+        cls = s[2] if s[2] else "Unassigned"
+        if cls not in grouped_perf:
+            grouped_perf[cls] = []
+            classes.append(cls)
+        grouped_perf[cls].append(s)
+        
+    return render_template('performance.html', 
+                          grouped_perf=grouped_perf, 
+                          activity_stars=activity_stars,
+                          classes=sorted(classes),
+                          active_page='performance')
+
+@app.route('/api/students_by_class')
+@login_required
+def get_students_by_class_api():
+    org_id = session['org_id']
+    class_name = request.args.get('class_name')
+    students = db_operations.get_students_by_class(org_id, class_name)
+    return jsonify([{'id': s[0], 'name': s[1]} for s in students])
+
+@app.route('/api/bulk_update_marks', methods=['POST'])
+@login_required
+def bulk_update_marks():
+    data = request.json
+    user_ids = data.get('user_ids', [])
+    subject = data.get('subject')
+    score = float(data.get('score', 0))
+    total = float(data.get('total', 100))
+    term = data.get('term', 'Activity Log')
+    org_id = session['org_id']
+    
+    if not user_ids or not subject:
+        return jsonify({"status": "error", "message": "No students or subject selected"}), 400
+        
+    success = db_operations.add_bulk_marks(user_ids, org_id, subject, score, total, term)
+    if success:
+        return jsonify({"status": "success", "message": f"Activity logged for {len(user_ids)} students!"})
+    return jsonify({"status": "error", "message": "Database update failed"}), 500
+
+@app.route('/performance/student/<int:user_id>')
+@login_required
+def student_performance(user_id):
+    org_id = session['org_id']
+    user_info = db_operations.get_user_details(user_id)
+    marks = db_operations.get_student_marks(user_id)
+    
+    # Prepare data for Radar Chart and Categorized Averages
+    subjects = []
+    scores = []
+    skill_scores = []
+    academic_scores = []
+    
+    SKILL_LIST = ['Games/Sports', 'Singing', 'Dance', 'Arts', 'Yoga']
+    
+    for m in marks:
+        if m[0] not in subjects:
+            subjects.append(m[0])
+            perc = round((m[1] / m[2]) * 100, 1)
+            scores.append(perc)
+            
+            if m[0] in SKILL_LIST:
+                skill_scores.append(perc)
+            else:
+                academic_scores.append(perc)
+
+    avg_skill = round(sum(skill_scores)/len(skill_scores), 1) if skill_scores else None
+    
+    return render_template('student_performance.html', 
+                          user=user_info, 
+                          marks=marks, 
+                          subjects=subjects, 
+                          scores=scores,
+                          avg_skill=avg_skill)
+
+@app.route('/api/update_marks', methods=['POST'])
+@login_required
+def update_marks():
+    data = request.json
+    user_id = data.get('user_id')
+    subject = data.get('subject')
+    score = float(data.get('score', 0))
+    total = float(data.get('total', 100))
+    term = data.get('term', 'Unit Test')
+    org_id = session['org_id']
+    
+    db_operations.update_student_marks(user_id, org_id, subject, score, total, term)
+    return jsonify({"status": "success", "message": f"Marks updated for {subject}"})
+
+@app.route('/api/send_fee_alert', methods=['POST'])
+@login_required
+def send_fee_alert():
+    user_id = request.json.get('user_id')
+    org_id = session['org_id']
+    
+    # Fetch details
+    user_info = db_operations.get_user_details(user_id)
+    if not user_info:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+    
+    # Fetch fee details
+    fee_records = db_operations.get_all_fees(org_id)
+    fee_info = next((f for f in fee_records if f[0] == user_id), None)
+    
+    if not fee_info or not fee_info[5]: # No due amount
+        return jsonify({"status": "error", "message": "No pending fees for this student"}), 400
+        
+    name, due_amount, phone = user_info[1], fee_info[5], user_info[4]
+    
+    success, _ = notifications.send_fee_notification(phone, name, due_amount)
+    if success:
+        return jsonify({"status": "success", "message": f"Fee alert sent to {name}'s parent."}), 200
+    return jsonify({"status": "error", "message": "Failed to send alert."}), 500
 
 @app.route('/backup_data')
 @login_required
@@ -628,5 +808,6 @@ if __name__ == '__main__':
     orchestrator = EngineOrchestrator()
     monitor_thread = threading.Thread(target=background_attendance_monitor, daemon=True)
     monitor_thread.start()
+    app.jinja_env.globals.update(zip=zip)
     app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

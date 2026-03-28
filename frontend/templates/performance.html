@@ -1,0 +1,249 @@
+{% extends "layout.html" %}
+{% block title %}Performance Dashboard | Presento{% endblock %}
+{% block content %}
+
+<div class="max-w-7xl mx-auto pb-20 px-4 md:px-8">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 animate-fade-in">
+        <div>
+            <h1 class="text-4xl md:text-5xl font-black text-white tracking-tight leading-none mb-3">Academic <span class="text-brand-500">Intelligence</span></h1>
+            <p class="text-zinc-500 font-bold uppercase text-[10px] tracking-[0.4em] ml-1">Student Performance & Grading Analytics</p>
+        </div>
+        <div class="flex items-center gap-4">
+            <button onclick="openBulkModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-500/20 flex items-center gap-3">
+                <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                Bulk Log Activity
+            </button>
+            <div class="bg-zinc-900/50 p-4 rounded-3xl border border-white/5 backdrop-blur-3xl hidden md:block">
+                <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Analytics Engine</p>
+                <div class="flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-cyan-500 animate-pulse"></span>
+                    <span class="text-sm font-black text-white">Neural Insights Active</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Stars Summary -->
+    {% if activity_stars %}
+    <div class="mb-16 animate-slide-up">
+        <h3 class="text-xs font-black text-emerald-500 uppercase tracking-[0.3em] ml-4 mb-6">Activity Stars (Participation)</h3>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {% for s in activity_stars %}
+            <div class="glass-card p-4 rounded-3xl border border-emerald-500/10 flex items-center gap-4 bg-emerald-500/[0.02]">
+                <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-xs font-black text-emerald-500">
+                    {{ loop.index }}
+                </div>
+                <div class="min-w-0">
+                    <p class="text-sm font-black text-white truncate">{{ s[0] }}</p>
+                    <p class="text-[9px] font-bold text-zinc-500 uppercase">{{ s[1] }} Activities</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Class-wise Segmentation -->
+    <div class="space-y-16">
+        {% for cls, students in grouped_perf.items() %}
+        <section class="animate-slide-up" style="animation-delay: {{ loop.index0 * 0.1 }}s">
+            <div class="flex items-center justify-between mb-8 px-4">
+                <div class="flex items-center gap-4">
+                    <div class="h-10 w-1.5 bg-brand-500 rounded-full"></div>
+                    <div>
+                        <h2 class="text-2xl font-black text-white tracking-tight">{{ cls }}</h2>
+                        <p class="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">{{ students|length }} Students tracked</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for s in students %}
+                <a href="/performance/student/{{ s[0] }}" class="glass-card p-6 rounded-[2.5rem] hover:border-brand-500/30 transition-all group relative overflow-hidden">
+                    <!-- Progress Background -->
+                    {% set score = s[3] or 0 %}
+                    <div class="absolute inset-0 bg-brand-500/[0.02] transition-opacity opacity-0 group-hover:opacity-100"></div>
+                    
+                    <div class="relative z-10">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="w-12 h-12 bg-zinc-800 rounded-2xl flex items-center justify-center text-lg font-black text-zinc-400 group-hover:bg-brand-500 group-hover:text-white transition-all">
+                                {{ s[1][:1] }}
+                            </div>
+                            <div class="text-right">
+                                <span class="px-3 py-1 bg-white/5 rounded-full text-[9px] font-black text-zinc-500 uppercase tracking-widest border border-white/5">
+                                    ID: {{ s[0] }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-black text-white mb-1 group-hover:text-brand-400 transition-colors">{{ s[1] }}</h3>
+                        
+                        <div class="space-y-4 pt-4 border-t border-white/5 mt-4">
+                            <div class="flex justify-between items-end">
+                                <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Academic Index</span>
+                                <span class="text-xl font-black {% if score >= 80 %}text-emerald-500{% elif score >= 60 %}text-cyan-500{% else %}text-amber-500{% endif %}">
+                                    {{ score|round(1) }}%
+                                </span>
+                            </div>
+                            
+                            <!-- Mini Progress Bar -->
+                            <div class="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                                <div class="h-full {% if score >= 80 %}bg-emerald-500{% elif score >= 60 %}bg-cyan-500{% else %}bg-amber-500{% endif %} rounded-full transition-all duration-1000" style="width: {{ score }}%"></div>
+                            </div>
+                            
+                            <div class="flex justify-between items-center bg-zinc-900/40 p-3 rounded-xl">
+                                <span class="text-[9px] font-black text-zinc-500 uppercase">Latest Grade</span>
+                                <span class="text-xs font-black text-white">
+                                    {% if score >= 90 %}A++
+                                    {% elif score >= 80 %}A
+                                    {% elif score >= 70 %}B+
+                                    {% elif score >= 60 %}B
+                                    {% elif score >= 50 %}C
+                                    {% else %}Needs Focus{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
+
+        {% if not grouped_perf %}
+        <div class="py-20 text-center glass-card rounded-[3rem] border-dashed border-white/10">
+            <i data-lucide="book-open-check" class="w-16 h-16 text-zinc-800 mx-auto mb-6"></i>
+            <h3 class="text-xl font-black text-white mb-2">Academic Repository Empty</h3>
+            <p class="text-zinc-500 text-xs font-bold uppercase tracking-widest">Register students to begin performance tracking</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Bulk Activity Modal -->
+<div id="bulkModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] hidden items-center justify-center p-4">
+    <div class="glass-card w-full max-w-2xl rounded-[3rem] border border-white/10 p-10 max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center mb-10 shrink-0">
+            <div>
+                <h2 class="text-3xl font-black text-white">Bulk Activity Log</h2>
+                <p class="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Multi-Student Entry System</p>
+            </div>
+            <button onclick="closeBulkModal()" class="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-zinc-400 hover:text-white transition-all">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <form id="bulkForm" class="space-y-8 overflow-hidden flex flex-col">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 shrink-0">
+                <div>
+                    <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">1. Select Class</label>
+                    <select id="bulkClass" required onchange="loadStudents(this.value)" class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                        <option value="">Choose Class...</option>
+                        {% for cls in classes %}
+                        <option value="{{ cls }}">{{ cls }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">2. Select Domain</label>
+                    <select id="bulkSubj" required class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                        <option value="Games/Sports">⚽ Games & Sports</option>
+                        <option value="Singing">🎤 Singing / Music</option>
+                        <option value="Dance">💃 Dancing</option>
+                        <option value="Arts">🎨 Arts & Crafts</option>
+                        <option value="Yoga">🧘 Yoga & Fitness</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto min-h-[200px] bg-black/20 rounded-[2rem] p-6 border border-white/5">
+                <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4">3. Select Participants</label>
+                <div id="studentList" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <p class="col-span-full text-center text-zinc-600 italic text-sm py-10">Select a class first...</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 shrink-0">
+                <div>
+                    <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">Proficiency (%)</label>
+                    <input type="number" id="bulkScore" value="100" required class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">Event/Term</label>
+                    <input type="text" id="bulkTerm" value="Daily Activity" required class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                </div>
+            </div>
+
+            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-2xl text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-500/20 active:scale-95 shrink-0">
+                Log for Selected Students
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openBulkModal() {
+        document.getElementById('bulkModal').style.display = 'flex';
+        lucide.createIcons();
+    }
+    function closeBulkModal() {
+        document.getElementById('bulkModal').style.display = 'none';
+        document.getElementById('bulkForm').reset();
+        document.getElementById('studentList').innerHTML = '<p class="col-span-full text-center text-zinc-600 italic text-sm py-10">Select a class first...</p>';
+    }
+
+    async function loadStudents(className) {
+        if(!className) return;
+        const list = document.getElementById('studentList');
+        list.innerHTML = '<div class="col-span-full py-10 flex justify-center"><div class="animate-spin h-6 w-6 border-2 border-emerald-500 border-t-transparent rounded-full"></div></div>';
+        
+        const res = await fetch(`/api/students_by_class?class_name=${encodeURIComponent(className)}`);
+        const students = await res.json();
+        
+        if(students.length === 0) {
+            list.innerHTML = '<p class="col-span-full text-center text-zinc-600 py-10">No students found in this class.</p>';
+            return;
+        }
+
+        list.innerHTML = students.map(s => `
+            <label class="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                <input type="checkbox" name="student_ids" value="${s.id}" class="w-5 h-5 rounded-lg bg-black border-white/10 text-emerald-500 focus:ring-emerald-500/50">
+                <span class="text-sm font-bold text-zinc-300 group-hover:text-white">${s.name}</span>
+            </label>
+        `).join('');
+    }
+
+    document.getElementById('bulkForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const selected = Array.from(document.querySelectorAll('input[name="student_ids"]:checked')).map(cb => cb.value);
+        
+        if(selected.length === 0) {
+            alert('Please select at least one student!');
+            return;
+        }
+
+        const data = {
+            user_ids: selected,
+            subject: document.getElementById('bulkSubj').value,
+            score: document.getElementById('bulkScore').value,
+            term: document.getElementById('bulkTerm').value
+        };
+
+        const res = await fetch('/api/bulk_update_marks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await res.json();
+        if(result.status === 'success') {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert('Error: ' + result.message);
+        }
+    };
+</script>
+
+{% endblock %}

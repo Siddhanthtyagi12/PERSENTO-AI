@@ -66,6 +66,37 @@ def setup_database():
             FOREIGN KEY(org_id) REFERENCES Organizations(id)
         )
     ''')
+
+    # 5. 'Fees' Table banana
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Fees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            org_id INTEGER DEFAULT 1,
+            total_fee REAL DEFAULT 0.0,
+            paid_amount REAL DEFAULT 0.0,
+            due_amount REAL DEFAULT 0.0,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES Users(id),
+            FOREIGN KEY(org_id) REFERENCES Organizations(id)
+        )
+    ''')
+
+    # 6. 'marks' Table banana (Academic & Activity Tracking)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS marks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            org_id INTEGER DEFAULT 1,
+            subject_name TEXT NOT NULL,
+            score REAL DEFAULT 0.0,
+            total_max REAL DEFAULT 100.0,
+            term TEXT DEFAULT 'General',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES Users(id),
+            FOREIGN KEY(org_id) REFERENCES Organizations(id)
+        )
+    ''')
     
     conn.commit()
     conn.close()

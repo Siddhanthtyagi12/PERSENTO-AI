@@ -536,3 +536,215 @@ def get_user_name_by_id(user_id):
         return row[0] if row else "Unknown"
     finally:
         conn.close()
+def get_all_fees(org_id):
+    """Returns fee status for all students in the organization."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    u_tbl = get_table("Users")
+    f_tbl = get_table("Fees")
+    
+    # Left join to catch students without a fee record yet
+    cursor.execute(f'''
+        SELECT u.id, u.name, u.class_name, f.total_fee, f.paid_amount, f.due_amount, f.last_updated
+        FROM {u_tbl} u
+        LEFT JOIN {f_tbl} f ON u.id = f.user_id
+        WHERE u.org_id={q} AND u.role='Student'
+        ORDER BY f.due_amount DESC
+    ''', (org_id,))
+    
+    res = cursor.fetchall()
+    conn.close()
+    return res
+
+def update_fee_record(user_id, org_id, total_fee=None, paid_amount=None):
+    """Updates or initializes a fee record for a user."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("Fees")
+    
+    try:
+        # Check if record exists
+        cursor.execute(f"SELECT total_fee, paid_amount FROM {tbl} WHERE user_id={q}", (user_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            curr_total = total_fee if total_fee is not None else row[0]
+            curr_paid = paid_amount if paid_amount is not None else row[1]
+            due = curr_total - curr_paid
+            cursor.execute(f"UPDATE {tbl} SET total_fee={q}, paid_amount={q}, due_amount={q}, last_updated={q} WHERE user_id={q}",
+                           (curr_total, curr_paid, due, datetime.now(), user_id))
+        else:
+            total = total_fee if total_fee is not None else 0.0
+            paid = paid_amount if paid_amount is not None else 0.0
+            due = total - paid
+            cursor.execute(f"INSERT INTO {tbl} (user_id, org_id, total_fee, paid_amount, due_amount) VALUES ({q}, {q}, {q}, {q}, {q})",
+                           (user_id, org_id, total, paid, due))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_top_defaulters(org_id, limit=5):
+    """Returns top students with highest due amounts."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    u_tbl = get_table("Users")
+    f_tbl = get_table("Fees")
+    
+    cursor.execute(f'''
+        SELECT u.name, f.due_amount, u.class_name, u.id
+        FROM {u_tbl} u
+        JOIN {f_tbl} f ON u.id = f.user_id
+        WHERE u.org_id={q} AND f.due_amount > 0
+        ORDER BY f.due_amount DESC
+        LIMIT {limit}
+    ''', (org_id,))
+    res = cursor.fetchall()
+    conn.close()
+    return res
+
+# --- PERFORMANCE LOGIC ---
+
+def get_student_marks(user_id):
+    """Returns all subject marks for a specific student."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("marks")
+    cursor.execute(f"SELECT subject_name, score, total_max, term, created_at FROM {tbl} WHERE user_id={q} ORDER BY created_at DESC", (user_id,))
+    res = cursor.fetchall()
+    conn.close()
+    return res
+
+def update_student_marks(user_id, org_id, subject, score, total_max=100, term="General"):
+    """Inserts or updates a performance record."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("marks")
+    
+    # Simple strategy: Add new record for history tracking
+    cursor.execute(f"INSERT INTO {tbl} (user_id, org_id, subject_name, score, total_max, term) VALUES ({q}, {q}, {q}, {q}, {q}, {q})",
+                   (user_id, org_id, subject, score, total_max, term))
+    conn.commit()
+    conn.close()
+
+def get_performance_summary(org_id):
+    """Calculates average performance per student to show on the dashboard."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    u_tbl = get_table("Users")
+    m_tbl = get_table("marks")
+    
+    # Average percentage marks per student
+    cursor.execute(f'''
+        SELECT u.id, u.name, u.class_name, AVG(m.score / m.total_max * 100) as avg_score
+        FROM {u_tbl} u
+        LEFT JOIN {m_tbl} m ON u.id = m.user_id
+        WHERE u.org_id={q} AND u.role='Student'
+        GROUP BY u.id, u.name, u.class_name
+    ''', (org_id,))
+    res = cursor.fetchall()
+    conn.close()
+    return res
+
+def get_student_full_summary(org_id):
+    """Deep summary for AI: Name, Attendance, Fees, Marks, and Skills."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    u_tbl = get_table("Users")
+    f_tbl = get_table("Fees")
+    m_tbl = get_table("marks")
+    
+    # 1. Fetch Basic Bio & Attendance %
+    stats = get_student_stats(org_id) # [{id, name, class, present_days, percentage}]
+    
+    # 2. Fetch Performance & Skills
+    cursor.execute(f"SELECT user_id, subject_name, score, total_max, term FROM {m_tbl} WHERE org_id={q}", (org_id,))
+    all_marks = cursor.fetchall()
+    
+    # 3. Fetch Fee Status
+    cursor.execute(f"SELECT user_id, due_amount FROM {f_tbl} WHERE org_id={q}", (org_id,))
+    all_fees = cursor.fetchall()
+    conn.close()
+    
+    # Build Map
+    marks_map = {}
+    for user_id, subj, score, total, term in all_marks:
+        if user_id not in marks_map: marks_map[user_id] = []
+        marks_map[user_id].append(f"{subj}: {score}/{total} ({term})")
+        
+    fees_map = {f[0]: f[1] for f in all_fees}
+    
+    holistic_data = []
+    for s in stats:
+        sid = s['id']
+        holistic_data.append({
+            "name": s['name'],
+            "class": s['class'],
+            "attendance": f"{s['percentage']}%",
+            "fees_due": f"₹{fees_map.get(sid, 0.0)}",
+            "performance": marks_map.get(sid, ["No academic data logged yet."])
+        })
+        
+    return holistic_data
+
+def get_students_by_class(org_id, class_name):
+    """Returns a list of students in a specific class."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("Users")
+    cursor.execute(f"SELECT id, name FROM {tbl} WHERE org_id={q} AND class_name={q} AND role='Student' ORDER BY name", (org_id, class_name))
+    res = cursor.fetchall()
+    conn.close()
+    return res
+
+def add_bulk_marks(user_ids, org_id, subject, score, total_max, term):
+    """Inserts performance/activity records for multiple students at once."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("marks")
+    
+    try:
+        current_time = datetime.now()
+        for uid in user_ids:
+            cursor.execute(f"INSERT INTO {tbl} (user_id, org_id, subject_name, score, total_max, term, created_at) VALUES ({q}, {q}, {q}, {q}, {q}, {q}, {q})",
+                           (uid, org_id, subject, score, total_max, term, current_time))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] Bulk marks update failed: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_activity_stars(org_id, limit=5):
+    """Returns students with most activity logs (Skills/Hobbies)."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    u_tbl = get_table("Users")
+    m_tbl = get_table("marks")
+    
+    # Define Skill Domain list
+    SKILL_LIST = ('Games/Sports', 'Singing', 'Dance', 'Arts', 'Yoga')
+    skill_q = ', '.join([q] * len(SKILL_LIST))
+    
+    cursor.execute(f'''
+        SELECT u.name, COUNT(m.id) as activity_count, u.class_name
+        FROM {u_tbl} u
+        JOIN {m_tbl} m ON u.id = m.user_id
+        WHERE u.org_id={q} AND m.subject_name IN ({skill_q})
+        GROUP BY u.id, u.name, u.class_name
+        ORDER BY activity_count DESC
+        LIMIT {limit}
+    ''', (org_id, *SKILL_LIST))
+    res = cursor.fetchall()
+    conn.close()
+    return res

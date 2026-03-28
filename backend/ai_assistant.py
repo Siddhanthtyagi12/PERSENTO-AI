@@ -39,32 +39,39 @@ def chat():
         return jsonify({"error": "Gemini API Key missing in .env"}), 500
 
     try:
-        # 1. Fetch Context Data
+        # 1. Fetch Holistic Context Data
         today = datetime.now().strftime('%Y-%m-%d')
-        stats = db_operations.get_student_stats(org_id) or []
+        holistic_data = db_operations.get_student_full_summary(org_id)
         today_attendance = db_operations.get_all_attendance_today(org_id, today) or []
         
         # 2. Build Context String
-        context_data = f"Date: {today}\n\nOverall Stats:\n"
-        for s in stats:
-            context_data += f"- ID: {s.get('id')}, Name: {s.get('name')}, Class/Role: {s.get('class')}, Present Days: {s.get('present_days')}, Attendance: {s.get('percentage')}%\n"
+        context_data = f"Date: {today}\n\nSTUDENT HOLISTIC REPORTS (Attendance, Fees, Marks, Hobbies):\n"
+        for s in holistic_data:
+            perf_str = ", ".join(s['performance'])
+            context_data += f"- {s['name']} (Class: {s['class']}): Attendance: {s['attendance']}, Fees Due: {s['fees_due']}, Progress: [{perf_str}]\n"
             
-        context_data += "\nToday's Attendance Log:\n"
+        context_data += "\nToday's Scan Logs:\n"
         for r in today_attendance:
-            context_data += f"- {r[0]} ({r[2]} - {r[3]}) marked at {r[1]}\n"
+            context_data += f"- {r[0]} ({r[2]}) appeared at {r[1]}\n"
 
-        # 3. System Prompt (Restored and Improved)
-        system_prompt = f"""You are 'Vidyalaya AI', a helpful and intelligent chatbot assistant for the school principal/management.
-You answer questions clearly, politely, and professionally. Use Hindi-English (Hinglish) or English as appropriate.
+        # 3. System Prompt (Upgraded for Holistic Reporting)
+        system_prompt = f"""You are 'Vidyalaya AI', a senior school administrator's digital advisor.
+You help teachers and parents understand student progress across ALL areas: Academics, Sports, Attendance, and Fees.
 
-IMPORTANT:
-1. DO NOT MAKE UP NAMES (APNE MANN SE NAAM NA BANAYEIN).
-2. ONLY use the data provided in the SCHOOL DATA CONTEXT below. 
-3. If the context is empty or information is missing, say: "Maaf kijiye, abhi database mein iski koi jankari nahi mili."
-4. Do not provide 'sample' list unless specifically asked for an example.
+VOICE & TONE:
+- Professional, empathetic, and encouraging.
+- Use Hinglish (Hindi + English) like: "Unki performance bahut achi hai" or "Unhone Sports mein 90% score kiya hai".
+
+REPORTING RULES:
+1. When asked about a student, give a COMBINED report:
+   - "Attendance kaisi hai?" -> Look at {s['attendance']}
+   - "Academic results?" -> Look at {s['performance']} (Marks)
+   - "Hobby/Sports?" -> Look for keywords like 'Games', 'Singing', 'Dance' in the performance list.
+2. If fees are pending, mention them politely as a reminder.
+3. If no record is found for a specific name, say: "Mujhe [Name] ki koi record nahi mili. Kya aapne sahi naam likha hai?"
 
 --- SCHOOL DATA CONTEXT ---
-{context_data if context_data.strip() else "DATABASE IS CURRENTLY EMPTY. NO DATA LOADED."}
+{context_data if context_data.strip() else "DATABASE IS CURRENTLY EMPTY."}
 ---------------------------
 """
         

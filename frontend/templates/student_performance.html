@@ -1,0 +1,299 @@
+{% extends "layout.html" %}
+{% block title %}Student Report | {{ user[1] }}{% endblock %}
+{% block content %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="max-w-7xl mx-auto pb-20 px-4 md:px-8">
+    <!-- Back Header -->
+    <div class="mb-10 animate-fade-in">
+        <a href="/performance" class="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors group">
+            <i data-lucide="arrow-left" class="w-4 h-4 group-hover:-translate-x-1 transition-transform"></i>
+            <span class="text-xs font-black uppercase tracking-widest">Back to Analytics</span>
+        </a>
+    </div>
+
+    <!-- Student Profile Card -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+        <div class="lg:col-span-1 space-y-8 animate-slide-up">
+            <div class="glass-card p-10 rounded-[3rem] text-center relative overflow-hidden group">
+                <div class="absolute -top-10 -left-10 w-40 h-40 bg-brand-500/10 rounded-full blur-3xl transition-opacity opacity-0 group-hover:opacity-100"></div>
+                
+                <div class="w-24 h-24 bg-zinc-800 rounded-[2rem] mx-auto mb-6 flex items-center justify-center text-3xl font-black text-zinc-400 border border-white/5 transition-all group-hover:bg-brand-500 group-hover:text-white shadow-xl shadow-black/20">
+                    {{ user[1][:1] }}
+                </div>
+                
+                <h1 class="text-2xl font-black text-white mb-2">{{ user[1] }}</h1>
+                <p class="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-6">Class: {{ user[3] }} • ID: {{ user[0] }}</p>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-zinc-900/40 p-4 rounded-2xl border border-white/5">
+                        <p class="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-1">Overall Rank</p>
+                        <p class="text-lg font-black text-white">#12</p>
+                    </div>
+                    <div class="bg-zinc-900/40 p-4 rounded-2xl border border-white/5">
+                        <p class="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-1">Attendance</p>
+                        <p class="text-lg font-black text-emerald-500">94%</p>
+                    </div>
+                    <div class="col-span-2 bg-brand-500/5 p-4 rounded-2xl border border-brand-500/10">
+                        <p class="text-[9px] font-black text-brand-500 uppercase tracking-widest mb-1 text-center">Skill Index (Activity)</p>
+                        <p class="text-xl font-black text-white text-center">
+                            {% if avg_skill %}{{ avg_skill }}%{% else %}N/A{% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <button onclick="document.getElementById('marksModal').style.display='flex'" 
+                        class="w-full mt-8 bg-brand-600 hover:bg-brand-500 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest transition-all shadow-xl shadow-brand-500/20 active:scale-95">
+                    Update Performance
+                </button>
+            </div>
+
+            <!-- Subject Cards -->
+            <div class="space-y-4">
+                <h3 class="text-xs font-black text-zinc-500 uppercase tracking-[0.3em] ml-2">Core Academics</h3>
+                {% for subj, score in zip(subjects, scores) %}
+                {% if subj not in ['Games/Sports', 'Singing', 'Dance', 'Arts', 'Yoga'] %}
+                <div class="glass-card p-5 rounded-2xl flex items-center justify-between group">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center text-xs font-black text-zinc-500 group-hover:text-brand-500 transition-colors">
+                            {{ subj[:2]|upper }}
+                        </div>
+                        <span class="text-sm font-bold text-zinc-300">{{ subj }}</span>
+                    </div>
+                    <span class="text-sm font-black {% if score >= 80 %}text-emerald-500{% elif score >= 60 %}text-cyan-500{% else %}text-amber-500{% endif %}">{{ score }}%</span>
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                <h3 class="text-xs font-black text-emerald-500 uppercase tracking-[0.3em] ml-2 mt-8">Skills & Activities</h3>
+                {% for subj, score in zip(subjects, scores) %}
+                {% if subj in ['Games/Sports', 'Singing', 'Dance', 'Arts', 'Yoga'] %}
+                <div class="glass-card p-5 rounded-2xl flex items-center justify-between group border-l-2 border-l-emerald-500/50">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-xs font-black text-emerald-500">
+                            ★
+                        </div>
+                        <span class="text-sm font-bold text-zinc-300">{{ subj }}</span>
+                    </div>
+                    <span class="text-sm font-black text-emerald-400">{{ score }}%</span>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Charts Corner -->
+        <div class="lg:col-span-2 space-y-8 animate-slide-up stagger-1">
+            <div class="glass-card p-10 rounded-[3rem] border border-white/5 h-full">
+                <div class="flex justify-between items-start mb-10">
+                    <div>
+                        <h2 class="text-xl font-black text-white">Intelligence Map</h2>
+                        <p class="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Skill Hexagon Analysis</p>
+                    </div>
+                    <div class="bg-brand-500/10 px-4 py-2 rounded-xl border border-brand-500/20">
+                        <span class="text-[10px] font-black text-brand-400 uppercase tracking-widest">Neural Projection</span>
+                    </div>
+                </div>
+
+                <div class="w-full aspect-square md:aspect-auto md:h-[500px] flex items-center justify-center">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Academic History -->
+    <div class="glass-card rounded-[3rem] overflow-hidden animate-slide-up stagger-2">
+        <div class="p-8 border-b border-white/5 bg-zinc-900/20">
+            <h3 class="text-lg font-black text-white">Academic & Activity Logs</h3>
+            <p class="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Comprehensive Grade Archives</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="text-zinc-500 text-[10px] font-bold uppercase tracking-widest bg-zinc-900/40">
+                        <th class="px-8 py-5">Date</th>
+                        <th class="px-8 py-5">Domain</th>
+                        <th class="px-8 py-5">Type</th>
+                        <th class="px-8 py-5 text-right">Proficiency</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    {% for m in marks %}
+                    {% set is_skill = m[0] in ['Games/Sports', 'Singing', 'Dance', 'Arts', 'Yoga'] %}
+                    <tr class="hover:bg-white/[0.02] transition-colors group">
+                        <td class="px-8 py-5 text-xs text-zinc-500 font-bold">{{ m[4].split(' ')[0] }}</td>
+                        <td class="px-8 py-5">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] 
+                                    {% if is_skill %}bg-emerald-500/10 text-emerald-500{% else %}bg-zinc-800 text-zinc-400{% endif %}">
+                                    {% if m[0] == 'Games/Sports' %}⚽
+                                    {% elif m[0] == 'Singing' %}🎤
+                                    {% elif m[0] == 'Dance' %}💃
+                                    {% elif m[0] == 'Arts' %}🎨
+                                    {% elif m[0] == 'Yoga' %}🧘
+                                    {% else %}📖{% endif %}
+                                </div>
+                                <span class="text-sm font-black {% if is_skill %}text-emerald-400{% else %}text-white{% endif %}">
+                                    {{ m[0] }}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="px-8 py-5">
+                            <span class="px-3 py-1 bg-zinc-900 rounded-lg text-[9px] font-black text-zinc-500 uppercase tracking-widest border border-white/5">
+                                {{ m[3] }}
+                            </span>
+                        </td>
+                        <td class="px-8 py-5 text-right">
+                            <div class="flex flex-col items-end">
+                                <span class="text-sm font-black text-white">{{ m[1] }} / {{ m[2] }}</span>
+                                <span class="text-[9px] font-bold text-zinc-600 uppercase">{{ (m[1]/m[2]*100)|round(0) }}% Proficiency</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not marks %}
+                    <tr><td colspan="4" class="px-8 py-20 text-center text-zinc-600 italic">No academic logs found for this student.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Add Modal -->
+<div id="marksModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] hidden items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md rounded-[2.5rem] border border-white/10 p-10">
+        <div class="flex justify-between items-center mb-10">
+            <div>
+                <h2 class="text-2xl font-black text-white">Log Performance</h2>
+                <p class="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Academic Data Entry</p>
+            </div>
+            <button onclick="document.getElementById('marksModal').style.display='none'" class="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-zinc-400 hover:text-white transition-all">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <form id="marksForm" class="space-y-6">
+            <input type="hidden" name="user_id" value="{{ user[0] }}">
+            <div>
+                <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">Subject</label>
+                <select id="subjInput" required class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-brand-500/50 transition-all">
+                    <optgroup label="Academic Subjects" class="bg-zinc-900">
+                        <option value="Math">Mathematics</option>
+                        <option value="Science">Science</option>
+                        <option value="English">English</option>
+                        <option value="Hindi">Hindi</option>
+                        <option value="SST">S. Studies</option>
+                        <option value="Computer">Computer AI</option>
+                    </optgroup>
+                    <optgroup label="Skills & Hobbies" class="bg-zinc-900 font-black text-emerald-500">
+                        <option value="Games/Sports">⚽ Games & Sports</option>
+                        <option value="Singing">🎤 Singing / Music</option>
+                        <option value="Dance">💃 Dancing</option>
+                        <option value="Arts">🎨 Arts & Crafts</option>
+                        <option value="Yoga">🧘 Yoga & Fitness</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">Obtained</label>
+                    <input type="number" id="scoreInput" step="0.5" required placeholder="85"
+                        class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-brand-500/50 transition-all">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">Maximum</label>
+                    <input type="number" id="totalInput" required value="100"
+                        class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-brand-500/50 transition-all">
+                </div>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 ml-1">Exam Term</label>
+                <input type="text" id="termInput" required placeholder="Unit Test 1" value="Unit Test"
+                    class="w-full bg-zinc-950 border border-white/5 rounded-2xl py-4 px-5 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-brand-500/50 transition-all">
+            </div>
+
+            <button type="submit" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest transition-all shadow-xl shadow-brand-500/20 active:scale-95">
+                Save Narrative
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: {{ subjects|tojson }},
+            datasets: [{
+                label: 'Student Proficiency Map',
+                data: {{ scores|tojson }},
+                fill: true,
+                backgroundColor: 'rgba(37, 99, 235, 0.2)',
+                borderColor: '#2563EB',
+                pointBackgroundColor: '#2563EB',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: '#2563EB',
+                borderWidth: 3,
+                pointRadius: 4
+            }]
+        },
+        options: {
+            scales: {
+                r: {
+                    angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    pointLabels: { 
+                        color: '#A1A1AA', 
+                        font: { weight: '900', size: 11, family: 'Inter' },
+                        padding: 20
+                    },
+                    ticks: { display: false, stepSize: 20 },
+                    max: 100,
+                    min: 0
+                }
+            },
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#09090B',
+                    titleFont: { weight: 'bold' },
+                    bodyFont: { weight: 'black' },
+                    padding: 12,
+                    cornerRadius: 12,
+                    displayColors: false
+                }
+            },
+            elements: { line: { tension: 0.15 } }
+        }
+    });
+
+    document.getElementById('marksForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = {
+            user_id: {{ user[0] }},
+            subject: document.getElementById('subjInput').value,
+            score: document.getElementById('scoreInput').value,
+            total: document.getElementById('totalInput').value,
+            term: document.getElementById('termInput').value
+        };
+
+        const res = await fetch('/api/update_marks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const resData = await res.json();
+        if(resData.status === 'success') {
+            location.reload();
+        } else {
+            alert('Error updating marks');
+        }
+    });
+</script>
+
+{% endblock %}

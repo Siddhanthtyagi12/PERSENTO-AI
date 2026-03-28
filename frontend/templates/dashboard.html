@@ -5,7 +5,7 @@
 {% block content %}
 <div class="space-y-10">
     <!-- PAGE HEADER -->
-    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 animate-fade-in">
         <div>
             <h1 class="text-3xl font-black text-white tracking-tight mb-1">{{ org_name }}</h1>
             <p class="text-zinc-500 font-medium tracking-wide flex items-center gap-2 uppercase text-[10px]">
@@ -40,7 +40,7 @@
     </div>
 
     <!-- SECTION 1: INTELLIGENCE OVERVIEW (Stats & Aggregates) -->
-    <section class="space-y-6">
+    <section class="space-y-6 animate-slide-up stagger-1">
         <div class="flex items-center gap-3">
             <div class="h-6 w-1 bg-brand-500 rounded-full"></div>
             <h2 class="text-xs font-black text-zinc-400 uppercase tracking-[0.4em]">Intelligence Overview</h2>
@@ -101,7 +101,7 @@
     </section>
 
     <!-- SECTION 2: SYSTEM COMMAND CENTER (The Engine) -->
-    <section class="space-y-6 pt-10 border-t border-white/5">
+    <section class="space-y-6 pt-10 border-t border-white/5 animate-slide-up stagger-2">
         <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="h-6 w-1 bg-emerald-500 rounded-full"></div>
@@ -177,7 +177,7 @@
     </section>
 
     <!-- SECTION 3: AUDIT & LOGS -->
-    <section class="space-y-6 pt-10 border-t border-white/5">
+    <section class="space-y-6 pt-10 border-t border-white/5 animate-slide-up stagger-3">
         <div class="flex items-center gap-3">
             <div class="h-6 w-1 bg-cyan-500 rounded-full"></div>
             <h2 class="text-xs font-black text-zinc-400 uppercase tracking-[0.4em]">Operational Logs</h2>
