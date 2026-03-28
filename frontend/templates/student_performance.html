@@ -224,13 +224,18 @@
 
 <script>
     const ctx = document.getElementById('radarChart').getContext('2d');
+    
+    // Safely parse injected python lists
+    const chartLabels = JSON.parse('{{ subjects|tojson|safe }}' || '[]');
+    const chartScores = JSON.parse('{{ scores|tojson|safe }}' || '[]');
+
     new Chart(ctx, {
         type: 'radar',
         data: {
-            labels: {{ subjects|tojson }},
+            labels: chartLabels,
             datasets: [{
                 label: 'Student Proficiency Map',
-                data: {{ scores|tojson }},
+                data: chartScores,
                 fill: true,
                 backgroundColor: 'rgba(37, 99, 235, 0.2)',
                 borderColor: '#2563EB',
