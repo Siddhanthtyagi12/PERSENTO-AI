@@ -164,6 +164,14 @@ def browser_register():
         # Mean Signature for better accuracy
         final_signature = np.mean(signatures, axis=0)
         
+        # ADVANCED AI: Check for duplicates before saving
+        is_dup, dup_name = register_face.check_for_duplicate_face(final_signature)
+        if is_dup:
+            return jsonify({
+                "status": "error", 
+                "message": f"Registration Blocked! Yeh face pehle se '{dup_name}' ke naam se registered hai. AI confuse nahi hoga!"
+            }), 409
+
         # 1. Add to Supabase
         user_id = db_operations.add_user_db(name, role, class_name, parent_phone, org_id)
         
@@ -265,11 +273,18 @@ def register_school():
     return render_template('register_school.html')
 
 def validate_camera_source(source, org_id=None):
-    """Checks if the camera source is reachable. URLs bypass for speed."""
+    """Checks if the camera source is reachable or already active."""
     source_str = str(source).strip()
     if "://" in source_str:
-        return True # Trusted if it's a URL and user says it works in browser
+        return True # Trusted if it's a URL
     
+    # NEW: Check if this source is already LIVE in the orchestrator to avoid 'Busy' errors
+    if orchestrator and hasattr(orchestrator, 'active_processes'):
+        for pid, p in orchestrator.active_processes.items():
+            # Source can be int or str, normalize for comparison
+            if hasattr(p, 'source') and str(p.source).strip() == source_str:
+                return True # It's already in use by us, so it's valid!
+
     try:
         src = int(source_str)
         # Test with CAP_DSHOW first (Windows optimization)
@@ -282,7 +297,7 @@ def validate_camera_source(source, org_id=None):
                 cameras = db_operations.get_org_cameras(org_id)
                 for cam in cameras:
                     if str(cam[1]).strip() == source_str and cam[3] == 1:
-                        return True # It's already active and working
+                        return True # It's already marked active in DB
             return False
             
         cap.release()

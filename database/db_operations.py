@@ -119,6 +119,30 @@ def mark_attendance_db(user_id, org_id, date_str, time_str):
     finally:
         conn.close()
 
+def merge_users_db(target_id, source_ids):
+    """Moves attendance from several IDs to one target ID and deletes source IDs."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    a_tbl = get_table("Attendance")
+    u_tbl = get_table("Users")
+    
+    try:
+        for s_id in source_ids:
+            if int(s_id) == int(target_id): continue
+            # Move attendance
+            cursor.execute(f"UPDATE {a_tbl} SET user_id={q} WHERE user_id={q}", (target_id, s_id))
+            # Delete redundant user from DB
+            cursor.execute(f"DELETE FROM {u_tbl} WHERE id={q}", (s_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[DB ERROR] Merge failed: {e}")
+        return False
+    finally:
+        conn.close()
+
 def get_all_users(org_id):
     conn = connect_db()
     cursor = conn.cursor()
@@ -497,5 +521,18 @@ def get_user_details(user_id):
     try:
         cursor.execute(f"SELECT id, name, role, class_name FROM {tbl} WHERE id={q}", (user_id,))
         return cursor.fetchone()
+    finally:
+        conn.close()
+
+def get_user_name_by_id(user_id):
+    """Returns the name of a user by their ID."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("Users")
+    try:
+        cursor.execute(f"SELECT name FROM {tbl} WHERE id={q}", (user_id,))
+        row = cursor.fetchone()
+        return row[0] if row else "Unknown"
     finally:
         conn.close()

@@ -603,6 +603,14 @@ def browser_register():
         # Mean Signature for better accuracy
         final_signature = np.mean(signatures, axis=0)
         
+        # ADVANCED AI: Check for duplicates before saving
+        is_dup, dup_name = register_face.check_for_duplicate_face(final_signature)
+        if is_dup:
+            return jsonify({
+                "status": "error", 
+                "message": f"Registration Blocked! Yeh face pehle se '{dup_name}' ke naam se registered hai. AI confuse nahi hoga!"
+            }), 409
+
         # 1. Add to Supabase
         user_id = db_operations.add_user_db(name, role, class_name, parent_phone, org_id)
         

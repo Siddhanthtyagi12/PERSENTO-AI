@@ -123,6 +123,30 @@ def extract_face_signature(img):
         print(f"Error during detection: {e}")
     return None
 
+def check_for_duplicate_face(signature, threshold=0.3):
+    """
+    ADVANCED AI: Checks if a face signature already exists in the database.
+    Returns (True, user_name) if a duplicate is found, else (False, None).
+    """
+    known_encodings = load_encodings()
+    if not known_encodings:
+        return False, None
+        
+    known_ids = list(known_encodings.keys())
+    known_sigs = list(known_encodings.values())
+    
+    # Euclidean distances
+    distances = [np.linalg.norm(signature - ks) for ks in known_sigs]
+    best_idx = np.argmin(distances)
+    best_dist = distances[best_idx]
+    
+    if best_dist < threshold:
+        user_id = known_ids[best_idx]
+        user_name = db_operations.get_user_name_by_id(user_id)
+        return True, user_name
+        
+    return False, None
+
 def add_new_user_logic(name, role, class_name="N/A", org_id=1, parent_phone="N/A"):
     # Fetch camera index from DB
     camera_idx = db_operations.get_org_camera_index(org_id)
@@ -202,6 +226,13 @@ def add_new_user_logic(name, role, class_name="N/A", org_id=1, parent_phone="N/A
             if norm > 0:
                 avg_signature = avg_signature / norm
             
+            # ADVANCED AI: Check if this face is already registered
+            is_dup, dup_name = check_for_duplicate_face(avg_signature)
+            if is_dup:
+                print(f"\n[ADVANCED AI-ALARM] Registration Blocked! Yeh face pehle se '{dup_name}' ke naam se registered hai.")
+                success = False
+                break
+
             face_id = get_new_id()
             known_encodings[face_id] = avg_signature
             save_encodings(known_encodings)

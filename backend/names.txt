@@ -1,12 +1,7 @@
 12,varun
 13,ronak
-14,anjali
 15,Satyam Yadav
 16,Anjali kamat
-17,anjali
 18,siddhant tyagi
 19,mayank tyagi
 4,AI1234
-9,manager sir
-10,siddhanth tyagi
-11,siddhanth tyagi
