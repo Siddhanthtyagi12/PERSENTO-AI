@@ -1,8 +1,8 @@
-0# Vidyalaya AI: Cloud-Native School Attendance Solution
+0# Presento: Cloud-Native School Attendance Solution
 *Prepared by ___SIDDHANTH TYAGI__*
 
 ## 1. Introduction
-Modern schools require scalable, professional solutions. **Vidyalaya AI** is a production-ready **Cloud-Native SaaS (Software as a Service)** platform that uses high-accuracy Facial Recognition to automate attendance, provide real-time analytics to parents/principals, and eliminate proxy attendance forever.
+Modern schools require scalable, professional solutions. **Presento** is a production-ready **Cloud-Native SaaS (Software as a Service)** platform that uses high-accuracy Facial Recognition to automate attendance, provide real-time analytics to parents/principals, and eliminate proxy attendance forever.
 
 ## 2. Advanced Technology & Architecture
 Our system has evolved from a local prototype into a massive **Cloud-Scale Infrastructure**:
@@ -29,4 +29,4 @@ Our system has evolved from a local prototype into a massive **Cloud-Scale Infra
 - **Frontend**: HTML5, Tailwind CSS, Lucide Icons.
 
 ## 5. Vision: The Future of School Security
-Vidyalaya AI is not just an attendance logger; it is a security hub. Future updates include **Bus Tracking integration**, **Automated Gate Barriers**, and **AI Behavior Analysis** to detect student distress or unusual activity.
+Presento is not just an attendance logger; it is a security hub. Future updates include **Bus Tracking integration**, **Automated Gate Barriers**, and **AI Behavior Analysis** to detect student distress or unusual activity.

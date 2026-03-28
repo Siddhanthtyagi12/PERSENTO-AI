@@ -1,6 +1,6 @@
 -- ==============================================
 -- SUPABASE CLOUD DATABASE SETUP SCRIPT
--- Vidyalaya AI Startup Edition
+-- Presento AI Startup Edition
 -- ==============================================
 
 -- 1. Organizations Table (Each School's Account)
@@ -10,13 +10,13 @@ CREATE TABLE organizations (
     email TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
     camera_index TEXT DEFAULT '0',
-    recognition_threshold NUMERIC DEFAULT 1.2,
+    recognition_threshold NUMERIC DEFAULT 0.45,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- Default Super Admin Account
-INSERT INTO organizations (id, name, email, password) 
-VALUES (1, 'Vidyalaya Main', 'admin@vidyalaya.ai', 'admin123') 
+INSERT INTO organizations (id, name, email, password, recognition_threshold) 
+VALUES (1, 'Presento Main', 'admin@presento.ai', 'admin123', 0.45) 
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Users Table (Students & Teachers Registered)
@@ -31,13 +31,6 @@ CREATE TABLE users (
 );
 
 -- 3. Cameras Table (Multiple Camera Sources Per School)
-CREATE TABLE cameras (
-    id SERIAL PRIMARY KEY,
-    org_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
-    source TEXT NOT NULL,
-    label TEXT DEFAULT 'New Camera',
-    is_active INTEGER DEFAULT 0
-);
 
 -- 4. Attendance Table (Daily Scans)
 CREATE TABLE attendance (

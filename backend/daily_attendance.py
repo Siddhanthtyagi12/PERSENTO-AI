@@ -236,5 +236,5 @@ def run_attendance(org_id=1):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    # In standalone mode, use Org 1 (Vidyalaya Main) or ask
+    # In standalone mode, use Org 1 (Presento Main) or ask
     run_attendance(org_id=1)

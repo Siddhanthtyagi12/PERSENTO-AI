@@ -25,3 +25,11 @@ backend/camera_engine.log
 backend/__pycache__/
 database/__pycache__/
 *.log
+
+# Ignore Virtual Environment
+.venv/
+
+# Ignore Biometric Data and Models
+backend/encodings.pkl
+backend/names.txt
+*.task

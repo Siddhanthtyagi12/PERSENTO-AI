@@ -48,7 +48,7 @@ def generate_quiz():
         
     try:
         # Try multiple models seen in the user's available models list (using full names)
-        models_to_try = ['models/gemini-2.0-flash', 'models/gemini-flash-latest', 'models/gemini-pro-latest', 'models/gemini-1.5-flash']
+        models_to_try = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-pro']
         content = None
         error_msg = ""
         

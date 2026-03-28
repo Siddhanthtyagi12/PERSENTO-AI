@@ -30,6 +30,23 @@ names_file = os.path.join(os.path.dirname(__file__), 'names.txt')
 
 names_dict = {}
 
+def load_names_to_dict():
+    """Populates the global names_dict from names.txt."""
+    global names_dict
+    if os.path.exists(names_file):
+        with open(names_file, 'r') as f:
+            for line in f:
+                parts = line.strip().split(',')
+                if len(parts) >= 2:
+                    try:
+                        uid = int(parts[0])
+                        name = parts[1]
+                        names_dict[uid] = name
+                    except ValueError:
+                        continue
+    print(f"[INFO] Loaded {len(names_dict)} names into memory.")
+    return names_dict
+
 def get_new_id():
     # Freshly load from file to avoid sync issues
     current_names = {}
@@ -37,8 +54,11 @@ def get_new_id():
         with open(names_file, 'r') as f:
             for line in f:
                 parts = line.strip().split(',')
-                if len(parts) == 2:
-                    current_names[int(parts[0])] = parts[1]
+                if len(parts) >= 2:
+                    try:
+                        current_names[int(parts[0])] = parts[1]
+                    except ValueError:
+                        continue
     
     if not current_names:
         return 1
@@ -55,19 +75,22 @@ def save_names_and_db(id_num, name, org_id, role="Student", class_name="N/A", pa
     with open(names_file, 'a') as f:
         f.write(f"{id_num},{name}\n")
     
-    # Update local dict in case it's used elsewhere
-    names_dict[id_num] = name
+    # Update local dict
+    names_dict[int(id_num)] = name
     
     db_operations.add_user(id_num, name, org_id=org_id, role=role, class_name=class_name, parent_phone=parent_phone)    
 
 def load_encodings():
     if os.path.exists(encodings_file):
         with open(encodings_file, 'rb') as f:
-            return pickle.load(f)
+            data = pickle.load(f)
+            # Ensure keys are integers
+            return {int(k): v for k, v in data.items()}
     return {}
 
 def save_encodings(encodings_dict):
     with open(encodings_file, 'wb') as f:
+        # Save as original types, but ensure we are consistent
         pickle.dump(encodings_dict, f)
 
 def extract_face_signature(img):
@@ -120,6 +143,15 @@ def add_new_user_logic(name, role, class_name="N/A", org_id=1, parent_phone="N/A
     samples = []
     required_samples = 30
     
+    # Registration Phases
+    phases = [
+        {"name": "Dhire-Dhire Seedha (Straight) Dekhein", "start": 0, "end": 6},
+        {"name": "Ab Thoda Baayein (Left) Dekhein", "start": 6, "end": 12},
+        {"name": "Ab Thoda Daayein (Right) Dekhein", "start": 12, "end": 18},
+        {"name": "Ab Thoda Upar (Up) Dekhein", "start": 18, "end": 24},
+        {"name": "Ab Thoda Neeche (Down) Dekhein", "start": 24, "end": 30}
+    ]
+    
     while True:
         ret, img = cap.read()
         if not ret:
@@ -127,28 +159,39 @@ def add_new_user_logic(name, role, class_name="N/A", org_id=1, parent_phone="N/A
             break
             
         display_img = img.copy()
-        cv2.putText(display_img, f"Registering: {name}", (50, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(display_img, f"Samples: {len(samples)}/{required_samples}", (50, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-        cv2.putText(display_img, "Keep a steady face | 'Q' to Cancel", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        current_count = len(samples)
+        
+        # Determine Current Phase Instruction
+        current_instruction = "Finishing..."
+        for p in phases:
+            if p["start"] <= current_count < p["end"]:
+                current_instruction = p["name"]
+                break
+
+        # UI Overlay
+        overlay = display_img.copy()
+        cv2.rectangle(overlay, (0, 0), (640, 110), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, display_img, 0.4, 0, display_img)
+        
+        cv2.putText(display_img, f"Registering: {name}", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        cv2.putText(display_img, f"Instruction: {current_instruction}", (20, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        
+        # Progress Bar
+        bar_width = int((current_count / required_samples) * 600)
+        cv2.rectangle(display_img, (20, 85), (620, 95), (50, 50, 50), -1)
+        cv2.rectangle(display_img, (20, 85), (20 + bar_width, 95), (0, 255, 0), -1)
         
         # Extract signature for current frame
         signature = extract_face_signature(img)
         
         if signature is not None:
             samples.append(signature)
-            cv2.putText(display_img, "CAPTURING...", (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            # Visual feedback on face (simplified)
+            cv2.putText(display_img, "SCANNING...", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
         else:
-            cv2.putText(display_img, "FACE NOT DETECTED", (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-            cv2.putText(display_img, "Look directly at the camera", (50, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            cv2.putText(display_img, "FACE NOT DETECTED", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
             
-            # Draw a simple bounding box
-            h, w, _ = img.shape
-            # Using simple math for bounding box from 478 landmarks
-            # MediaPipe results are already fetched in extract_face_signature, 
-            # but we don't return landmarks from there. For UI, we just use the sig length.
-            # (In a real app, we'd reuse the detection result)
-            
-        cv2.imshow('Registration: 30-Sample Average Scan', display_img)
+        cv2.imshow('Registration: Multi-Angle Scan (High Accuracy)', display_img)
         
         if len(samples) >= required_samples:
             # COMPUTE AVERAGE EMBEDDING
@@ -167,7 +210,7 @@ def add_new_user_logic(name, role, class_name="N/A", org_id=1, parent_phone="N/A
             names_dict[face_id] = name
             save_names_and_db(face_id, name, org_id, role, class_name, parent_phone)
             
-            print(f"[SUCCESS] {name} ki averaged signature securely save ho gayi!")
+            print(f"[SUCCESS] {name} ki multi-angle averaged signature securely save ho gayi!")
             success = True
             break
             
@@ -180,13 +223,50 @@ def add_new_user_logic(name, role, class_name="N/A", org_id=1, parent_phone="N/A
     cv2.destroyAllWindows()
     return success
 
+def cleanup_user_files(user_id):
+    """Removes user from encodings.pkl and names.txt robustly."""
+    try:
+        # 1. Clear from encodings
+        encodings = load_encodings()
+        uid = int(user_id)
+        if uid in encodings:
+            del encodings[uid]
+            save_encodings(encodings)
+            
+        # 2. Clear from names.txt (Always reload from disk for sync)
+        current_names = {}
+        if os.path.exists(names_file):
+            with open(names_file, 'r') as f:
+                for line in f:
+                    parts = line.strip().split(',')
+                    if len(parts) >= 2:
+                        try:
+                            current_names[int(parts[0])] = parts[1]
+                        except: continue
+        
+        if uid in current_names:
+            del current_names[uid]
+            if uid in names_dict:
+                del names_dict[uid]
+                
+            with open(names_file, "w") as f:
+                for u, n in current_names.items():
+                    f.write(f"{u},{n}\n")
+                    
+        return True
+    except Exception as e:
+        print(f"[ERROR] Cleanup failed: {e}")
+        return False
+
+# Auto-load on import
+load_names_to_dict()
+
 if __name__ == "__main__":
     print("\n===============================")
-    print("  SCHOOL ADMIN REGISTRATION  ")
+    print("  PRESENTO AI REGISTRATION  ")
     print("===============================")
     name = input("Naya naam daalein: ")
     role = input("Role (Student/Teacher): ")
     class_name = input("Class (e.g. 10thA): ")
     add_new_user_logic(name, role, class_name)
     print("\n[INFO] Registration complete.")
-

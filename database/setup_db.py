@@ -19,12 +19,14 @@ def setup_database():
             name TEXT NOT NULL UNIQUE,
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
+            camera_index TEXT DEFAULT '0',
+            recognition_threshold REAL DEFAULT 0.45,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
     # Insert default organization to avoid breaking existing data
-    cursor.execute("INSERT OR IGNORE INTO Organizations (id, name, email, password) VALUES (1, 'Vidyalaya Main', 'admin@vidyalaya.ai', 'admin123')")
+    cursor.execute("INSERT OR IGNORE INTO Organizations (id, name, email, password, recognition_threshold) VALUES (1, 'Presento Main', 'admin@presento.ai', 'admin123', 0.45)")
 
     # 2. 'Users' Table banana (Bacho/Teachers ka record)
     cursor.execute('''
@@ -33,6 +35,7 @@ def setup_database():
             name TEXT NOT NULL,
             role TEXT DEFAULT 'Student',
             class_name TEXT DEFAULT 'N/A',
+            parent_phone TEXT DEFAULT 'N/A',
             org_id INTEGER DEFAULT 1,
             FOREIGN KEY(org_id) REFERENCES Organizations(id)
         )
@@ -48,6 +51,18 @@ def setup_database():
             time TEXT NOT NULL,
             status TEXT DEFAULT 'Present',
             FOREIGN KEY(user_id) REFERENCES Users(id),
+            FOREIGN KEY(org_id) REFERENCES Organizations(id)
+        )
+    ''')
+
+    # 4. 'Cameras' Table banana
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Cameras (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id INTEGER,
+            source TEXT NOT NULL,
+            label TEXT DEFAULT 'Main Camera',
+            is_active INTEGER DEFAULT 1,
             FOREIGN KEY(org_id) REFERENCES Organizations(id)
         )
     ''')

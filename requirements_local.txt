@@ -8,6 +8,7 @@ openpyxl
 gunicorn
 google-genai
 python-dotenv
-opencv-python-headless
+opencv-python
+pyttsx3
 mediapipe
 requests

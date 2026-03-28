@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+.git/
+.github/
+.vscode/
+local_data/
+*.db
+*.log
+backend/encodings.pkl
+backend/names.txt
+frontend/node_modules/

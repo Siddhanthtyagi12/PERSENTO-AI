@@ -9,14 +9,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_cors import CORS
 from database import db_operations
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 # Setup template folder path relative to this script
 template_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'templates')
 app = Flask(__name__, template_folder=template_dir)
 CORS(app)
-app.secret_key = 'vidyalaya_ai_secret_key_123' # Change this in production!
+app.secret_key = 'presento_ai_secret_key_777' # Updated Brand Key
+app.permanent_session_lifetime = timedelta(days=30) # Keep users logged in for 30 days
 
 # Multi-Camera Engine Integration
 from backend.camera_engine import EngineOrchestrator
@@ -51,39 +52,64 @@ def index_page():
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    # app.logger removed to prevent Errno 22
     org_id = session['org_id']
     org_name = session['org_name']
     
+    # app.logger removed
     # Aaj ki date nikalna
     today = datetime.now().strftime('%Y-%m-%d')
     date_filter = request.args.get('date', today)
     
-    # DB se data lana (SaaS filter)
-    records = db_operations.get_all_attendance_today(org_id, date_filter)
+    try:
+        # DB se data lana (SaaS filter)
+        records = db_operations.get_all_attendance_today(org_id, date_filter)
+        # app.logger removed
+    except Exception as e:
+        # app.logger removed
+        flash("Database se haazri laane mein dikkat huyi.", "error")
+        records = []
     
     student_records = []
     teacher_records = []
+    class_summary = {} # {class_name: count}
     
     for row in records:
-        role = row[2]
-        if role and ('Teacher' in role or 'Sir' in role or 'Maam' in role):
-            teacher_records.append(row)
-        else:
-            student_records.append(row)
+        try:
+            role = row[2]
+            class_name = row[3] if row[3] else "Other"
             
-    # Short Attendance List (SaaS filter)
-    short_attendance = db_operations.get_short_attendance_students(org_id, threshold=75.0)
+            if role and ('Teacher' in role or 'Sir' in role or 'Maam' in role):
+                teacher_records.append(row)
+            else:
+                student_records.append(row)
+                class_summary[class_name] = class_summary.get(class_name, 0) + 1
+        except Exception as e:
+            pass # Ignore row processing errors silently
+            
+    # app.logger removed
     
-    cameras = db_operations.get_org_cameras(org_id)
-    
-    return render_template('dashboard.html', 
-                           org_name=org_name,
-                           student_records=student_records, 
-                           teacher_records=teacher_records, 
+    try:
+        # Short Attendance List (SaaS filter)
+        short_attendance = db_operations.get_short_attendance_students(org_id, threshold=75.0)
+        
+        cameras = db_operations.get_org_cameras(org_id)
+        # app.logger removed
+        
+        # app.logger removed
+        return render_template('dashboard.html',
+                               org_name=org_name,
+                           student_records=student_records,
+                           teacher_records=teacher_records,
+                           class_summary=class_summary,
                            date=date_filter,
-                           short_attendance=short_attendance,
-                           active_page='dashboard',
-                           cameras=cameras)
+                               short_attendance=short_attendance,
+                               active_page='dashboard',
+                               cameras=cameras)
+    except Exception as e:
+        # app.logger removed
+        flash("Dashboard load nahi ho paya, kripya dobara try karein.", "error")
+        return redirect(url_for('login'))
 
 @app.route('/critical')
 @login_required
@@ -104,40 +130,77 @@ def manage_users():
     users = db_operations.get_all_users(org_id)
     return render_template('manage_users.html', users=users, active_page='manage_users')
 
+@app.route('/api/browser_register', methods=['POST'])
+@login_required
+def browser_register():
+    data = request.json
+    name = data.get('name')
+    role = data.get('role')
+    class_name = data.get('class_name')
+    parent_phone = data.get('parent_phone')
+    images = data.get('images', [])
+    org_id = session['org_id']
+
+    if not name or not images:
+        return jsonify({"status": "error", "message": "Missing name or biometric data"}), 400
+
+    try:
+        from backend import register_face
+        signatures = []
+        
+        for base64_image in images:
+            header, encoded = base64_image.split(",", 1) if "," in base64_image else (None, base64_image)
+            img_data = base64.b64decode(encoded)
+            nparr = np.frombuffer(img_data, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            sig = register_face.extract_face_signature(img)
+            if sig is not None:
+                signatures.append(sig)
+
+        if not signatures:
+            return jsonify({"status": "error", "message": "No face detected in any capture. Try again."}), 400
+
+        # Mean Signature for better accuracy
+        final_signature = np.mean(signatures, axis=0)
+        
+        # 1. Add to Supabase
+        user_id = db_operations.add_user_db(name, role, class_name, parent_phone, org_id)
+        
+        if not user_id:
+            raise Exception("Failed to generate user ID from database")
+
+        # 2. Update Local Biometrics
+        known_encodings = register_face.load_encodings()
+        known_encodings[user_id] = final_signature
+        register_face.names_dict[user_id] = name
+        register_face.save_encodings(known_encodings)
+        
+        # 3. Update names.txt (Sync for monitoring)
+        with open(register_face.names_file, 'a') as f:
+            f.write(f"{user_id},{name}\n")
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Bachhe {name} ka registration ho gaya hai! Aapki biometrics save ho chuki hain.", 
+            "name": name,
+            "user_id": user_id
+        }), 200
+
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
 @login_required
 def delete_user(user_id):
-    import os
-    import pickle
-    
-    # 1. Remove from names.txt
-    names_file = 'names.txt'
-    if os.path.exists(names_file):
-        users_dict = {}
-        with open(names_file, 'r') as f:
-            for line in f:
-                parts = line.strip().split(',')
-                if len(parts) == 2:
-                    users_dict[int(parts[0])] = parts[1]
-        
-        if user_id in users_dict:
-            del users_dict[user_id]
-            with open(names_file, 'w') as f:
-                for uid, name in users_dict.items():
-                    f.write(f"{uid},{name}\n")
-
-    # 2. Remove from encodings.pkl
-    encodings_file = os.path.join(os.path.dirname(__file__), 'encodings.pkl')
-    if os.path.exists(encodings_file):
-        with open(encodings_file, 'rb') as f:
-            encodings = pickle.load(f)
-        if user_id in encodings:
-            del encodings[user_id]
-            with open(encodings_file, 'wb') as f:
-                pickle.dump(encodings, f)
-
-    # 3. Remove from Database (SaaS filter)
     org_id = session['org_id']
+    from backend import register_face
+    
+    # 1. Clean up local files and memory maps
+    register_face.cleanup_user_files(user_id)
+    
+    # 2. Remove from Database
     db_operations.delete_user(user_id, org_id)
     
     return f"User {user_id} deleted successfully", 200
@@ -181,22 +244,51 @@ def latest_logs():
 @app.route('/register_school', methods=['GET', 'POST'])
 def register_school():
     if request.method == 'POST':
-        name = request.form.get('name')
-        email = request.form.get('email')
-        password = request.form.get('password')
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
         
         if not name or not email or not password:
             flash('All fields are required!', 'error')
-            return redirect(url_for('register_school'))
+            return render_template('register_school.html')
             
-        org_id = db_operations.register_organization(name, email, password)
-        if org_id:
-            flash('Registration successful! Please login.', 'success')
-            return redirect(url_for('login'))
-        else:
-            flash('Email or School Name already registered!', 'error')
+        try:
+            org_id = db_operations.register_organization(name, email, password)
+            if org_id:
+                flash('Registration successful! Please login.', 'success')
+                return redirect(url_for('login'))
+            else:
+                flash('Email or School Name already registered!', 'error')
+        except Exception as e:
+            flash(f'Registration Error: {str(e)}', 'error')
             
     return render_template('register_school.html')
+
+def validate_camera_source(source, org_id=None):
+    """Checks if the camera source is reachable. URLs bypass for speed."""
+    source_str = str(source).strip()
+    if "://" in source_str:
+        return True # Trusted if it's a URL and user says it works in browser
+    
+    try:
+        src = int(source_str)
+        # Test with CAP_DSHOW first (Windows optimization)
+        cap = cv2.VideoCapture(src, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(src) # Fallback
+            
+        if not cap.isOpened():
+            if org_id:
+                cameras = db_operations.get_org_cameras(org_id)
+                for cam in cameras:
+                    if str(cam[1]).strip() == source_str and cam[3] == 1:
+                        return True # It's already active and working
+            return False
+            
+        cap.release()
+        return True
+    except:
+        return False
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
@@ -206,10 +298,15 @@ def settings():
         action = request.form.get('action')
         
         if action == 'add_camera':
-            source = request.form.get('source')
-            label = request.form.get('label')
-            db_operations.add_org_camera(org_id, source, label)
-            flash('Camera added successfully!', 'success')
+            source = request.form.get('source', '').strip()
+            label = request.form.get('label', '').strip()
+            
+            # Validation Step
+            if validate_camera_source(source, org_id):
+                db_operations.add_org_camera(org_id, source, label)
+                flash(f'Camera "{label}" added successfully! Go to Dashboard and click "START MONITORING".', 'success')
+            else:
+                flash(f'Error: Camera source "{source}" is invalid or busy. Check connection.', 'error')
             
         elif action == 'delete_camera':
             cam_id = request.form.get('camera_id')
@@ -235,7 +332,6 @@ def toggle_camera():
     global orchestrator
     if orchestrator is None:
         flash('System Engine is not initialized. Please restart the dashboard.', 'error')
-        print("[CRITICAL] orchestrator is None in /toggle_camera route!")
         return redirect(url_for('dashboard'))
 
     org_id = session['org_id']
@@ -254,7 +350,6 @@ def toggle_camera():
         if cam_info:
             _, source, label, _ = cam_info
             _, threshold = db_operations.get_org_settings(org_id)
-            print(f"[INFO] Starting Camera {cam_id} ({label}) from Toggle. Source: {source}")
             orchestrator.start_camera(org_id, cam_id, source, threshold)
             flash(f'Camera {label} is now LIVE!', 'success')
         else:
@@ -298,6 +393,7 @@ def reset_system():
     db_operations.reset_org_data(org_id)
     flash('System Reset Successful! All data has been cleared.', 'success')
     return redirect(url_for('settings'))
+
 @app.route('/backup_data')
 @login_required
 def backup_data():
@@ -310,8 +406,9 @@ def backup_data():
     return Response(
         json_data,
         mimetype="application/json",
-        headers={"Content-disposition": f"attachment; filename=VidyalayaAI_Backup_{session['org_name']}.json"}
+        headers={"Content-disposition": f"attachment; filename=Presento_Backup_{session['org_name']}.json"}
     )
+
 @app.route('/reports')
 @login_required
 def reports():
@@ -394,18 +491,22 @@ def export_report():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('username') # Form field remains 'username' to avoid template changes
-        password = request.form.get('password')
+        email = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
         
-        org = db_operations.get_organization_by_login(email, password)
-        if org:
-            session['org_id'] = org[0]
-            session['org_name'] = org[1]
-            session['camera_index'] = org[2] # Store camera choice
-            session['recognition_threshold'] = org[3] # Store AI threshold
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Invalid Email or Password!', 'error')
+        try:
+            org = db_operations.get_organization_by_login(email, password)
+            if org:
+                session.permanent = True
+                session['org_id'] = org[0]
+                session['org_name'] = org[1]
+                session['camera_index'] = org[2]
+                session['recognition_threshold'] = org[3]
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Invalid Email or Password!', 'error')
+        except Exception as e:
+            flash(f'Login Error: {str(e)}', 'error')
             
     return render_template('login.html')
 
@@ -413,23 +514,6 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('login'))
-
-# ==========================================
-# MOBILE APP API ROUTES (Merged)
-# ==========================================
-def require_api_token(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token or not token.startswith("Bearer "):
-            return jsonify({"error": "Unauthorized"}), 401
-        try:
-            org_id = int(token.split(" ")[1])
-            request.org_id = org_id
-        except (ValueError, IndexError):
-            return jsonify({"error": "Invalid Token"}), 401
-        return f(*args, **kwargs)
-    return decorated_function
 
 @app.route('/api/app/login', methods=['POST'])
 def mobile_login():
@@ -448,140 +532,86 @@ def mobile_login():
         }), 200
     return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
-@app.route('/api/app/dashboard', methods=['GET'])
-@require_api_token
-def mobile_dashboard():
-    org_id = request.org_id
-    today = datetime.now().strftime('%Y-%m-%d')
-    today_records = db_operations.get_all_attendance_today(org_id, today)
-    stats = db_operations.get_student_stats(org_id)
-    short_attendance = db_operations.get_short_attendance_students(org_id, 75.0)
-    return jsonify({
-        "status": "success",
-        "date": today,
-        "total_present_today": len(today_records),
-        "total_students": len(stats),
-        "critical_attendance_count": len(short_attendance),
-        "recent_logs": [{"name": r[0], "time": r[1], "role": r[2], "class": r[3]} for r in today_records[:10]]
-    }), 200
-
-@app.route('/api/app/mark_attendance', methods=['POST'])
-@require_api_token
-def mobile_mark_attendance():
-    import base64
+@app.route('/api/browser_attendance', methods=['POST'])
+@login_required
+def browser_attendance():
     data = request.json
     base64_image = data.get('image')
-    org_id = request.org_id
+    org_id = session['org_id']
+    
     if not base64_image:
-        return jsonify({"status": "error", "message": "No image provided"}), 400
+        return jsonify({"status": "error", "message": "No image"}), 400
+        
     try:
-        img_data = base64.b64decode(base64_image.split(',')[1] if ',' in base64_image else base64_image)
+        header, encoded = base64_image.split(",", 1) if "," in base64_image else (None, base64_image)
+        img_data = base64.b64decode(encoded)
         nparr = np.frombuffer(img_data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        from backend import register_face
         signature = register_face.extract_face_signature(img)
+        
         if signature is None:
-            return jsonify({"status": "error", "message": "Face not detected properly. Move closer."}), 400
+            return jsonify({"status": "no_face", "message": "Face not detected"}), 200
+            
         known_encodings = register_face.load_encodings()
+        # Reload names from names.txt to catch new registrations
+        register_face.load_names_to_dict()
         _, threshold = db_operations.get_org_settings(org_id)
+        
         known_ids = list(known_encodings.keys())
         known_sigs = list(known_encodings.values())
+        
         if not known_sigs:
-            return jsonify({"status": "error", "message": "Database is empty."}), 404
+            return jsonify({"status": "empty", "message": "No users registered"}), 200
+            
         distances = [np.linalg.norm(signature - ks) for ks in known_sigs]
         best_idx = np.argmin(distances)
+        
         if distances[best_idx] < threshold:
             user_id = known_ids[best_idx]
+            user_name = register_face.names_dict.get(user_id) or "Unknown"
+            
+            # Fetch user details to get role
+            user_details = db_operations.get_user_details(user_id)
+            role = user_details[2] if user_details else "Student"
+            
             today = datetime.now().strftime('%Y-%m-%d')
             time_now = datetime.now().strftime('%H:%M:%S')
-            user_name = register_face.names_dict.get(user_id) or "Unknown"
+            
             marked = db_operations.mark_attendance_db(user_id, org_id, today, time_now)
-            return jsonify({"status": "success", "message": f"Attendance marked for {user_name}!"}), 200
-        return jsonify({"status": "error", "message": "Face not recognized."}), 401
+            
+            if role == "Teacher":
+                if marked:
+                    msg = f"Aapko dekh kar acha laga Sir, Teacher {user_name} ki attendance lag chuki hai."
+                else:
+                    msg = f"Teacher {user_name}, aapki attendance pehle hi lag chuki hai."
+            else:
+                if marked:
+                    msg = f"Welcome {user_name}, Student ki attendance lag chuki hai."
+                else:
+                    msg = f"Student {user_name}, aapki attendance pehle hi lag chuki hai."
+            
+            return jsonify({
+                "status": "success", 
+                "name": user_name, 
+                "role": role,
+                "message": msg
+            }), 200
+            
+        return jsonify({"status": "unknown", "message": "Face not recognized"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-from backend import register_face
-
-@app.route('/register', methods=['POST'])
-@login_required
-def register():
-    global orchestrator
-    name = request.form.get('name')
-    role = request.form.get('role')
-    class_name = request.form.get('class_name', 'N/A')
-    parent_phone = request.form.get('parent_phone', 'N/A')
-    org_id = session['org_id']
-    
-    if not name or not role:
-        return "Name and Role are required", 400
-        
-    # Check if any camera is already running (Conflict check)
-    if orchestrator and orchestrator.active_processes:
-        return "ERROR: Attendance Monitoring is active. Please 'STOP' all cameras from the Dashboard before registering new faces.", 405
-
-    print(f"[INFO] Starting registration for: {name} ({role})")
-    
-    try:
-        # Run the registration logic
-        success = register_face.add_new_user_logic(name, role, class_name, org_id, parent_phone)
-        
-        if success:
-            return f"Registration Success for {name}!", 200
-        else:
-            return "Registration Failed: Camera not found or canceled by user.", 500
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return f"Internal Server Error: {str(e)}", 500
-
-@app.route('/send_absence_notifications', methods=['POST'])
-@login_required
-def send_absence_notifications():
-    global orchestrator
-    org_id = session['org_id']
-    today = datetime.now().strftime('%Y-%m-%d')
-    
-    # 1. Get absent students
-    absent_students = db_operations.get_absent_students(org_id, today)
-    
-    if not absent_students:
-        flash('All students are present! No notifications needed.', 'info')
-        return redirect(url_for('dashboard'))
-        
-    # 2. Trigger notifications
-    success_count = 0
-    fail_count = 0
-    
-    for student in absent_students:
-        sid, name, phone, class_name = student
-        # Skip if no phone number
-        if not phone or phone == 'N/A':
-            fail_count += 1
-            continue
-            
-        success, _ = notifications.send_absence_notification(phone, name, class_name)
-        if success:
-            success_count += 1
-        else:
-            fail_count += 1
-            
-    flash(f'Absence Alerts: {success_count} sent successfully. {fail_count} failed/skipped.', 'success' if success_count > 0 else 'error')
-    return redirect(url_for('dashboard'))
-
-# Register Smart Quiz Blueprint
+# Register Blueprints
 from backend.smart_quiz_generator import quiz_bp
 app.register_blueprint(quiz_bp)
+from backend.ai_assistant import assistant_bp
+app.register_blueprint(assistant_bp)
 
 if __name__ == '__main__':
-    # Initialize Engine in the main process
     orchestrator = EngineOrchestrator()
-    
-    # Start monitor thread
     monitor_thread = threading.Thread(target=background_attendance_monitor, daemon=True)
     monitor_thread.start()
-
     app.config['TEMPLATES_AUTO_RELOAD'] = True
-    print("[INFO] Dashboard Startup...")
-    
-    # debug=True with reloader can cause issues with multiprocessing on Windows
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

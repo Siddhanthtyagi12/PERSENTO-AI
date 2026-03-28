@@ -1,129 +1,132 @@
 import cv2
 import numpy as np
 import os
-import pickle
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode
-from multiprocessing import Process, Queue, Event, Manager
 import time
-import sys
+import threading
 from datetime import datetime
-import json
+from multiprocessing import Process, Queue, Manager
+import pyttsx3
 import logging
 
-def calculate_ear(landmarks, eye_indices):
-    pts = [np.array([landmarks[i].x, landmarks[i].y]) for i in eye_indices]
-    A = np.linalg.norm(pts[1] - pts[5])
-    B = np.linalg.norm(pts[2] - pts[4])
-    C = np.linalg.norm(pts[0] - pts[3])
-    ear = (A + B) / (2.0 * C)
-    return ear
-
-# System configuration limits
-MAX_CAMERAS = 4
-
-# Add root to path
+# Add root to path so we can import from 'database' folder
+import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import db_operations
+from backend import register_face
 
-# Global config (Absolute paths relative to script location)
-ENCODINGS_FILE = os.path.join(os.path.dirname(__file__), 'encodings.pkl')
-NAMES_FILE = os.path.join(os.path.dirname(__file__), 'names.txt')
-LOG_FILE = os.path.join(os.path.dirname(__file__), 'camera_engine.log')
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 def log_message(msg):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    full_msg = f"[{timestamp}] {msg}\n"
-    with open(LOG_FILE, 'a') as f:
-        f.write(full_msg)
-    print(msg, flush=True)
+    logging.info(msg)
+
+def calculate_ear(landmarks, eye_indices):
+    """Calculates Eye Aspect Ratio (EAR) for blink detection."""
+    try:
+        # Vertical distances
+        v1 = np.linalg.norm(np.array([landmarks[eye_indices[1]].x, landmarks[eye_indices[1]].y]) - 
+                            np.array([landmarks[eye_indices[5]].x, landmarks[eye_indices[5]].y]))
+        v2 = np.linalg.norm(np.array([landmarks[eye_indices[2]].x, landmarks[eye_indices[2]].y]) - 
+                            np.array([landmarks[eye_indices[4]].x, landmarks[eye_indices[4]].y]))
+        # Horizontal distance
+        h = np.linalg.norm(np.array([landmarks[eye_indices[0]].x, landmarks[eye_indices[0]].y]) - 
+                           np.array([landmarks[eye_indices[3]].x, landmarks[eye_indices[3]].y]))
+        return (v1 + v2) / (2.0 * h)
+    except:
+        return 1.0
 
 class CameraWorker(Process):
     def __init__(self, org_id, camera_id, source, threshold, attendance_queue, shared_cache):
-        super(CameraWorker, self).__init__()
+        super().__init__()
         self.org_id = org_id
-        self.camera_id = camera_id
-        try:
-            self.source = int(source)
-        except (ValueError, TypeError):
-            self.source = source
+        self.camera_id = str(camera_id)
+        self.source = source
         self.threshold = threshold
         self.attendance_queue = attendance_queue
-        self.shared_cache = shared_cache # {user_id: last_marked_time}
+        self.shared_cache = shared_cache # Shared dict to prevent multi-camera double marking
         self.running = True
 
     def load_metadata(self):
-        names_dict = {}
-        if os.path.exists(NAMES_FILE):
-            with open(NAMES_FILE, 'r') as f:
-                for line in f:
-                    parts = line.strip().split(',')
-                    if len(parts) == 2:
-                        names_dict[int(parts[0])] = parts[1]
-        
-        known_encodings_dict = {}
-        if os.path.exists(ENCODINGS_FILE):
-            with open(ENCODINGS_FILE, 'rb') as f:
-                known_encodings_dict = pickle.load(f)
-        
-        return names_dict, known_encodings_dict
+        """Reloads names and encodings from disk."""
+        names = register_face.load_names_to_dict()
+        encods = register_face.load_encodings()
+        return names, encods
 
     def run(self):
-        log_message(f"[CAM-{self.camera_id}] Starting process for source: {self.source}")
-        try:
-            # Initialize MediaPipe in this process
-            model_path = os.path.join(os.path.dirname(__file__), 'face_landmarker.task')
-            base_options = python.BaseOptions(model_asset_path=model_path)
-            options = FaceLandmarkerOptions(
-                base_options=base_options,
-                running_mode=RunningMode.IMAGE,
-                num_faces=5
-            )
-            landmarker = FaceLandmarker.create_from_options(options)
-            
-            names_dict, known_encodings_dict = self.load_metadata()
-            known_ids = list(known_encodings_dict.keys())
-            known_signatures = list(known_encodings_dict.values())
-            
-            log_message(f"[CAM-{self.camera_id}] MediaPipe and Metadata loaded. Attempting to open VideoCapture with CAP_DSHOW...")
-            cap = cv2.VideoCapture(self.source, cv2.CAP_DSHOW)
-            if not cap.isOpened():
-                log_message(f"[ERROR-CAM-{self.camera_id}] Could NOT open source: {self.source}.")
-                return
-            
-            log_message(f"[CAM-{self.camera_id}] Source opened. Testing frame read...")
-            ret, test_frame = cap.read()
-            if not ret:
-                log_message(f"[ERROR-CAM-{self.camera_id}] Opened, but could NOT read frame.")
-                cap.release()
-                return
-            
-            log_message(f"[CAM-{self.camera_id}] Success! Starting main loop with cv2.imshow...")
+        log_message(f"[CAM-{self.camera_id}] Process Started. Source: {self.source}")
+        
+        # Initialize MediaPipe in the child process
+        import mediapipe as mp
+        from mediapipe.tasks import python
+        from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode
 
-            identity_buffer = {} # {id: frame_count}
-            verification_feedback = {} # {id: timestamp}
-            blink_counters = {} # {id: {'count': 0, 'blinked': False}}
-            STABILITY_FRAMES = 5
-            
-            LEFT_EYE = [33, 160, 158, 133, 153, 144]
-            RIGHT_EYE = [362, 385, 387, 263, 373, 380]
-            EAR_THRESHOLD = 0.18
-            
-            while self.running:
+        model_path = os.path.join(os.path.dirname(__file__), 'face_landmarker.task')
+        base_options = python.BaseOptions(model_asset_path=model_path)
+        options = FaceLandmarkerOptions(
+            base_options=base_options,
+            running_mode=RunningMode.IMAGE,
+            num_faces=1
+        )
+        landmarker = FaceLandmarker.create_from_options(options)
+
+        # Initial Metadata Load
+        names_dict, known_encodings_dict = self.load_metadata()
+        known_ids = list(known_encodings_dict.keys())
+        known_signatures = list(known_encodings_dict.values())
+
+        # Video Setup
+        try:
+            src = int(self.source) if str(self.source).isdigit() else self.source
+            if isinstance(src, int):
+                cap = cv2.VideoCapture(src, cv2.CAP_DSHOW)
+            else:
+                cap = cv2.VideoCapture(src)
+        except:
+            cap = cv2.VideoCapture(self.source)
+
+        if not cap.isOpened():
+            log_message(f"[ERROR-CAM-{self.camera_id}] Could not open source: {self.source}")
+            return
+
+        # Optimization Parameters
+        STABILITY_FRAMES = 5
+        identity_buffer = {} # {id: count}
+        blink_counters = {} # {id: {'count': 0, 'blinked': False}}
+        verification_feedback = {} # {id: timestamp}
+
+        LEFT_EYE = [33, 160, 158, 133, 153, 144]
+        RIGHT_EYE = [362, 385, 387, 263, 373, 380]
+        EAR_THRESHOLD = 0.18
+        
+        last_reload_time = time.time()
+        RELOAD_INTERVAL = 10 # Reload metadata every 10 seconds
+        
+        while self.running:
+            # Periodic Metadata Reload to catch new registrations
+            if time.time() - last_reload_time > RELOAD_INTERVAL:
+                try:
+                    new_names, new_encodings = self.load_metadata()
+                    if len(new_names) != len(names_dict) or len(new_encodings) != len(known_encodings_dict):
+                        log_message(f"[CAM-{self.camera_id}] New registrations detected. Reloading Metadata...")
+                        names_dict, known_encodings_dict = new_names, new_encodings
+                        known_ids = list(known_encodings_dict.keys())
+                        known_signatures = list(known_encodings_dict.values())
+                    last_reload_time = time.time()
+                except Exception as e:
+                    log_message(f"[ERROR-CAM-{self.camera_id}] Error reloading metadata: {e}")
+
+            try:
                 ret, frame = cap.read()
                 if not ret: break
                 
-                # Visualization (Show what the camera sees)
                 display_frame = frame.copy()
-                
+                h, w, _ = frame.shape
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                result = landmarker.detect(mp_image)
                 
-                if result.face_landmarks:
-                    for face_landmarks in result.face_landmarks:
-                        # Get full face bounds
-                        h, w, c = frame.shape
+                detection_result = landmarker.detect(mp_image)
+                if detection_result.face_landmarks:
+                    for face_landmarks in detection_result.face_landmarks:
+                        # Draw Box
                         min_x = int(min([l.x for l in face_landmarks]) * w)
                         max_x = int(max([l.x for l in face_landmarks]) * w)
                         min_y = int(min([l.y for l in face_landmarks]) * h)
@@ -147,35 +150,50 @@ class CameraWorker(Process):
                         if known_signatures:
                             distances = [np.linalg.norm(sig - ks) for ks in known_signatures]
                             best_idx = np.argmin(distances)
+                            best_dist = distances[best_idx]
                             
-                            if distances[best_idx] < self.threshold:
+                            # Stability Check: Only proceed if best match is significantly better than second best
+                            sorted_dists = sorted(distances)
+                            second_best_dist = sorted_dists[1] if len(sorted_dists) > 1 else 9.0
+                            confidence_gap = second_best_dist - best_dist
+                            
+                            if best_dist < self.threshold and confidence_gap > 0.05:
                                 user_id = known_ids[best_idx]
                                 user_name = names_dict.get(user_id, "Unknown")
-                                identity_buffer[user_id] = identity_buffer.get(user_id, 0) + 1
+                                
+                                # Increment buffer for this user, decay others to prevent "flickering" memory
+                                identity_buffer[user_id] = min(identity_buffer.get(user_id, 0) + 1, STABILITY_FRAMES + 10)
+                                for oid in list(identity_buffer.keys()):
+                                    if oid != user_id:
+                                        identity_buffer[oid] = max(0, identity_buffer[oid] - 1)
                                 
                                 if identity_buffer[user_id] >= STABILITY_FRAMES:
-                                    color = (0, 165, 255) # Orange (Ready for blink)
-                                    display_text = f"{user_name}: Please Blink"
+                                    # CHECK IF ALREADY MARKED TODAY
+                                    today = datetime.now().strftime('%Y-%m-%d')
+                                    cache_key = f"{user_id}_{today}"
                                     
-                                    # Liveness: Blink Detection
-                                    ear = (calculate_ear(face_landmarks, LEFT_EYE) + 
-                                           calculate_ear(face_landmarks, RIGHT_EYE)) / 2.0
-                                           
-                                    if user_id not in blink_counters:
-                                        blink_counters[user_id] = {'count': 0, 'blinked': False}
-                                        
-                                    if ear < EAR_THRESHOLD:
-                                        blink_counters[user_id]['count'] += 1
+                                    if cache_key in self.shared_cache:
+                                        color = (0, 255, 0)
+                                        display_text = f"{user_name}: Already Marked"
                                     else:
-                                        if blink_counters[user_id]['count'] >= 2:
-                                            blink_counters[user_id]['blinked'] = True
-                                        blink_counters[user_id]['count'] = 0
+                                        color = (0, 165, 255) # Orange (Ready for blink)
+                                        display_text = f"{user_name}: Please Blink"
                                         
-                                    if blink_counters[user_id]['blinked']:
-                                        today = datetime.now().strftime('%Y-%m-%d')
-                                        cache_key = f"{user_id}_{today}"
-                                        
-                                        if cache_key not in self.shared_cache:
+                                        # Liveness: Blink Detection
+                                        ear = (calculate_ear(face_landmarks, LEFT_EYE) + 
+                                               calculate_ear(face_landmarks, RIGHT_EYE)) / 2.0
+                                               
+                                        if user_id not in blink_counters:
+                                            blink_counters[user_id] = {'count': 0, 'blinked': False}
+                                            
+                                        if ear < EAR_THRESHOLD:
+                                            blink_counters[user_id]['count'] += 1
+                                        else:
+                                            if blink_counters[user_id]['count'] >= 2:
+                                                blink_counters[user_id]['blinked'] = True
+                                            blink_counters[user_id]['count'] = 0
+                                            
+                                        if blink_counters[user_id]['blinked']:
                                             log_message(f"[CAM-{self.camera_id}] Queuing attendance for {user_name}")
                                             self.attendance_queue.put({
                                                 'user_id': user_id, 
@@ -186,9 +204,9 @@ class CameraWorker(Process):
                                             self.shared_cache[cache_key] = time.time()
                                             verification_feedback[user_id] = time.time()
                                             blink_counters[user_id]['blinked'] = False # reset
-                                        
-                                        color = (0, 255, 0)
-                                        display_text = f"{user_name}: Verified"
+                                            
+                                            color = (0, 255, 0)
+                                            display_text = f"{user_name}: Verified"
                                 else:
                                     color = (255, 255, 0)
                                     display_text = f"Confirming {user_name}..."
@@ -196,7 +214,7 @@ class CameraWorker(Process):
                                 color = (0, 0, 255)
                                 display_text = "Unknown"
                                 
-                        # Overwrite if recently verified
+                        # Draw on frame
                         if user_id in verification_feedback:
                             if time.time() - verification_feedback[user_id] < 3.0:
                                 color = (0, 255, 0)
@@ -204,7 +222,6 @@ class CameraWorker(Process):
                             else:
                                 del verification_feedback[user_id]
                         
-                        # Draw on frame
                         cv2.rectangle(display_frame, (min_x, min_y), (max_x, max_y), color, 2)
                         text_y = min_y - 10 if min_y - 10 > 10 else min_y + 20
                         cv2.putText(display_frame, display_text, (min_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
@@ -212,14 +229,14 @@ class CameraWorker(Process):
                 cv2.imshow(f"Attendance Feed - Camera {self.camera_id}", display_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
-            
-        except Exception as e:
-            log_message(f"[CRITICAL-ERROR-CAM-{self.camera_id}] {str(e)}")
-        finally:
-            if 'cap' in locals() and cap.isOpened():
-                cap.release()
-            cv2.destroyAllWindows()
-            log_message(f"[CAM-{self.camera_id}] Process terminated and resources released.")
+            except Exception as e:
+                log_message(f"[CRITICAL-ERROR-CAM-{self.camera_id}] {str(e)}")
+        
+        # Finally block after while loop
+        if 'cap' in locals() and cap.isOpened():
+            cap.release()
+        cv2.destroyAllWindows()
+        log_message(f"[CAM-{self.camera_id}] Process terminated and resources released.")
 
 class EngineOrchestrator:
     def __init__(self):
@@ -227,6 +244,16 @@ class EngineOrchestrator:
         self.shared_cache = self.manager.dict()
         self.attendance_queue = Queue()
         self.active_processes = {} # {camera_id: Process}
+        
+        # Initialize TTS Engine
+        try:
+            self.engine = pyttsx3.init()
+            # Set voice properties (Optional)
+            self.engine.setProperty('rate', 150)
+            self.engine.setProperty('volume', 1.0)
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize TTS: {e}")
+            self.engine = None
 
     def start_camera(self, org_id, camera_id, source, threshold):
         camera_id = str(camera_id)
@@ -249,17 +276,47 @@ class EngineOrchestrator:
         while not self.attendance_queue.empty():
             data = self.attendance_queue.get()
             try:
-                db_operations.mark_attendance_db(
+                # Mark in DB
+                marked = db_operations.mark_attendance_db(
                     data['user_id'], 
                     data['org_id'], 
                     datetime.now().strftime('%Y-%m-%d'),
                     datetime.now().strftime('%H:%M:%S')
                 )
-                log_message(f"[ENGINE] SUCCESS: Marked Attendance for {data['name']} from Camera {data['camera_id']}")
+                
+                log_message(f"[ENGINE] SUCCESS: Marked Attendance for {data['name']} from Camera {data['camera_id']} (New: {marked})")
+                
+                # Personalized Voice Feedback
+                if self.engine:
+                    # Get user role for custom message
+                    user_details = db_operations.get_user_details(data['user_id'])
+                    role = user_details[2] if user_details else "Student"
+                    
+                    if role == "Teacher":
+                        if marked:
+                            msg = f"Aapko dekh kar acha laga Sir, Teacher {data['name']} ki attendance lag chuki hai."
+                        else:
+                            msg = f"Teacher {data['name']}, aapki attendance pehle hi lag chuki hai."
+                    else:
+                        if marked:
+                            msg = f"Welcome {data['name']}, Student ki attendance lag chuki hai."
+                        else:
+                            msg = f"Student {data['name']}, aapki attendance pehle hi lag chuki hai."
+                    
+                    # Run speech in a separate thread to avoid blocking the queue processing
+                    def speak_func(m):
+                        try:
+                            temp_engine = pyttsx3.init()
+                            temp_engine.setProperty('rate', 150)
+                            temp_engine.say(m)
+                            temp_engine.runAndWait()
+                        except: pass
+                    
+                    threading.Thread(target=speak_func, args=(msg,), daemon=True).start()
+
             except Exception as e:
                 log_message(f"[ENGINE] ERROR marking attendance for {data.get('name')}: {e}")
 
 if __name__ == "__main__":
     # Test stub
     engine = EngineOrchestrator()
-    # In production, app.py will call start_camera for each row in Cameras table

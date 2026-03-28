@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 
-{% block title %}Live Monitor | Vidyalaya AI{% endblock %}
+{% block title %}Live Monitor | Presento{% endblock %}
 
 {% block content %}
 <div class="space-y-8">
@@ -28,14 +28,69 @@
         </div>
     </div>
 
-    <!-- Live Grid -->
-    <div id="live-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <!-- Live cards will be injected here via JS -->
-        <div class="col-span-full py-20 text-center text-zinc-500 italic">
-            Waiting for first attendance...
+    <!-- Live Grid & Browser Camera -->
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <!-- Browser Camera Section -->
+        <div class="lg:col-span-1 space-y-6">
+            <div class="bg-zinc-800/60 p-6 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-black text-white uppercase tracking-widest">Browser Check-in</h3>
+                    <div id="camera-status" class="h-2 w-2 rounded-full bg-zinc-600"></div>
+                </div>
+                
+                <div class="relative aspect-square rounded-3xl bg-black overflow-hidden border border-white/5 mb-4 group-hover:border-brand-500/30 transition-colors">
+                    <video id="webcam" autoplay playsinline class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"></video>
+                    <canvas id="capture-canvas" class="hidden"></canvas>
+                    
+                    <!-- Scan Overlay -->
+                    <div id="scan-feedback" class="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+                        <div class="loading-ring mb-2"></div>
+                        <span class="text-[10px] font-black text-white uppercase tracking-[0.2em]" id="scan-text">Scanning...</span>
+                    </div>
+
+                    <!-- Result Overlay -->
+                    <div id="result-overlay" class="absolute inset-x-0 bottom-0 p-4 translate-y-full transition-transform duration-500 bg-gradient-to-t from-black to-transparent">
+                        <p id="result-text" class="text-center font-bold text-white text-sm"></p>
+                    </div>
+                </div>
+
+                <button id="start-camera" class="w-full py-4 bg-white/5 hover:bg-brand-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest transition-all border border-white/5 hover:border-brand-500 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)]">
+                    Start Web Camera
+                </button>
+                
+                <p class="text-[9px] text-zinc-500 mt-4 text-center leading-relaxed">
+                    Camera scans every 2 seconds.<br>Position face clearly in the frame.
+                </p>
+            </div>
+
+            <!-- Stats Mini Card -->
+            <div class="bg-brand-500/5 p-6 rounded-[2.5rem] border border-brand-500/10">
+                <p class="text-[10px] font-black text-brand-500 uppercase tracking-widest mb-1">Session Info</p>
+                <p class="text-xs text-zinc-400">Browser attendance is encrypted & processed on secure server.</p>
+            </div>
+        </div>
+
+        <!-- Live Attendance Cards -->
+        <div id="live-grid" class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <!-- Live cards will be injected here via JS -->
+            <div class="col-span-full py-20 text-center text-zinc-500 italic">
+                Waiting for first attendance...
+            </div>
         </div>
     </div>
 </div>
+
+<style>
+    .loading-ring {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255,255,255,0.1);
+        border-top: 3px solid #ef4444;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
 
 <template id="log-card-template">
     <div class="bg-zinc-800/40 p-6 rounded-[2.5rem] border border-white/5 shadow-sm hover:shadow-2xl hover:bg-zinc-800/60 transition-all duration-500 group relative overflow-hidden animate-in fade-in slide-in-from-bottom-4">
@@ -64,6 +119,15 @@
 </template>
 
 <script>
+    function speak(text) {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'hi-IN';
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+
     let lastRecordId = 0;
     const grid = document.getElementById('live-grid');
     const template = document.getElementById('log-card-template');
@@ -117,8 +181,117 @@
         }
     }
 
+    // --- BROWSER CAMERA LOGIC ---
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('capture-canvas');
+    const startBtn = document.getElementById('start-camera');
+    const scanFeedback = document.getElementById('scan-feedback');
+    const resultOverlay = document.getElementById('result-overlay');
+    const resultText = document.getElementById('result-text');
+    const camStatus = document.getElementById('camera-status');
+    const scanText = document.getElementById('scan-text');
+
+    let stream = null;
+    let scanInterval = null;
+
+    // Security Check
+    if (!window.isSecureContext && window.location.hostname !== 'localhost') {
+        camStatus.className = "h-2 w-2 rounded-full bg-red-500";
+        startBtn.disabled = true;
+        startBtn.innerText = "HTTPS Required for Camera";
+        const warn = document.createElement('div');
+        warn.className = "mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-[10px] text-red-400 font-bold uppercase tracking-widest text-center";
+        warn.innerText = "Browser blocks camera on insecure IP addresses. Use Localhost or HTTPS.";
+        startBtn.parentNode.appendChild(warn);
+    }
+
+    startBtn.onclick = async () => {
+        if (stream) {
+            // Stop camera
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+            clearInterval(scanInterval);
+            video.srcObject = null;
+            startBtn.innerText = "Start Web Camera";
+            camStatus.className = "h-2 w-2 rounded-full bg-zinc-600";
+            return;
+        }
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480 } });
+            video.srcObject = stream;
+            startBtn.innerText = "Stop Web Camera";
+            camStatus.className = "h-2 w-2 rounded-full bg-green-500 animate-pulse";
+            
+            // Start scanning every 2.5 seconds (reduced server load)
+            scanInterval = setInterval(captureAndRecognize, 2500);
+        } catch (err) {
+            alert("Camera access denied or not found!");
+            console.error(err);
+        }
+    };
+
+    async function captureAndRecognize() {
+        if (!stream) return;
+
+        // 1. Draw frame to canvas
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // 2. Convert to base64
+        const imageData = canvas.toDataURL('image/jpeg', 0.7);
+
+        // 3. UI Feedback
+        scanFeedback.style.opacity = '1';
+        scanText.innerText = "Processing...";
+
+        try {
+            const response = await fetch('/api/browser_attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            });
+            const result = await response.json();
+
+            // 4. Handle Result
+            showResult(result);
+        } catch (err) {
+            console.error("Scan error:", err);
+        } finally {
+            setTimeout(() => { scanFeedback.style.opacity = '0'; }, 500);
+        }
+    }
+
+    function showResult(result) {
+        resultOverlay.style.transform = 'translateY(0)';
+        
+        if (result.status === 'success') {
+            resultText.innerText = `Verified: ${result.name}`;
+            resultText.className = "text-center font-bold text-green-400 text-sm";
+            
+            // Voice Feedback
+            if (result.message) speak(result.message);
+            
+            // Refresh logs immediately on success
+            fetchLatestLogs();
+        } else if (result.status === 'unknown') {
+            resultText.innerText = "Face Unknown";
+            resultText.className = "text-center font-bold text-red-400 text-sm";
+        } else if (result.status === 'no_face') {
+            resultText.innerText = "No Face Detected";
+            resultText.className = "text-center font-bold text-zinc-500 text-sm";
+        }
+
+        // Hide result after 2 seconds
+        setTimeout(() => {
+            resultOverlay.style.transform = 'translateY(100%)';
+        }, 2000);
+    }
+
     setInterval(updateClock, 1000);
-    setInterval(fetchLatestLogs, 3000); // Check every 3 seconds
+    setInterval(fetchLatestLogs, 4000); 
     updateDate();
     updateClock();
     fetchLatestLogs();

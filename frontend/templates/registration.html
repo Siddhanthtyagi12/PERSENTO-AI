@@ -1,89 +1,87 @@
 {% extends "layout.html" %}
 
-{% block title %}Face Registration | Vidyalaya AI{% endblock %}
+{% block title %}Face Registration | Presento{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div class="max-w-6xl mx-auto">
     <!-- Header -->
-    <div class="mb-10">
-        <h1 class="text-3xl font-black text-white tracking-tight mb-1">Face Registration</h1>
-        <p class="text-zinc-500 font-medium tracking-wide flex items-center gap-2 uppercase text-[10px]">
-            <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-            Biometric Enrollment • <span class="text-brand-400 font-bold">Encrypted AI System</span>
-        </p>
+    <div class="mb-10 flex justify-between items-end">
+        <div>
+            <h1 class="text-3xl font-black text-white tracking-tight mb-1">Face Registration</h1>
+            <p class="text-zinc-500 font-medium tracking-wide flex items-center gap-2 uppercase text-[10px]">
+                <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                Biometric Enrollment • <span class="text-brand-400 font-bold">Browser Native Mode</span>
+            </p>
+        </div>
+        <div id="secure-warn" class="hidden px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2">
+            <i data-lucide="shield-alert" class="w-4 h-4 text-red-400"></i>
+            <span class="text-[10px] font-bold text-red-400 uppercase tracking-widest">Insecure Context: Camera Blocked</span>
+        </div>
     </div>
 
     <!-- Registration Card -->
-    <div class="glass-card rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl">
-            <!-- Left Instruction Panel -->
-            <div class="md:col-span-2 p-10 bg-brand-600/10 border-r border-white/5 flex flex-col justify-between">
-                <div>
-                    <h3 class="text-white font-bold text-lg mb-6 flex items-center gap-2">
-                        <i data-lucide="info" class="w-5 h-5 text-brand-400"></i>
-                        Instructions
-                    </h3>
-                    <ul class="space-y-4">
-                        <li class="flex items-start gap-3">
-                            <div class="h-6 w-6 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">01</div>
-                            <p class="text-xs text-zinc-400 leading-relaxed font-semibold">Enter the student's full name and select their role and class.</p>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <div class="h-6 w-6 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">02</div>
-                            <p class="text-xs text-zinc-400 leading-relaxed font-semibold">Click "Initialize AI Scanner" to open the camera monitoring window.</p>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <div class="h-6 w-6 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">03</div>
-                            <p class="text-xs text-zinc-400 leading-relaxed font-semibold">The system will capture 30 biometric samples automatically.</p>
-                        </li>
-                    </ul>
-                </div>
-
-                <div class="mt-8 p-6 rounded-3xl bg-white/[0.03] border border-white/5 italic text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] leading-relaxed">
-                    "Ensure good lighting and remove glasses/masks for the highest accuracy."
-                </div>
-            </div>
-
-            <!-- Right Form Panel -->
-            <div class="md:col-span-3 p-10 bg-white/[0.02]">
+    <div class="glass-card rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl grid grid-cols-1 lg:grid-cols-5">
+            <!-- Left Panel: Form -->
+            <div class="lg:col-span-2 p-10 bg-brand-600/5 border-r border-white/5">
                 <form id="regForm" class="space-y-6">
                     <div>
                         <label class="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 ml-1">Full Name</label>
                         <input type="text" id="regName" placeholder="e.g. Aryan Sharma" required
-                            class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder:text-zinc-700 text-white font-semibold">
+                            class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all text-white font-semibold">
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 ml-1">Role</label>
-                            <select id="regRole"
-                                class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all cursor-pointer text-white font-semibold">
+                            <select id="regRole" class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all text-white font-semibold">
                                 <option value="Student">Student</option>
                                 <option value="Teacher">Teacher / Faculty</option>
                             </select>
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 ml-1">Class</label>
-                            <input type="text" id="regClass" placeholder="e.g. 10thA"
-                                class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder:text-zinc-700 text-white font-semibold">
+                            <input type="text" id="regClass" placeholder="e.g. 10thA" class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all text-white font-semibold">
                         </div>
                     </div>
 
                     <div>
-                        <label class="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 ml-1">Parent Phone Number</label>
-                        <input type="text" id="regParentPhone" placeholder="e.g. +91 9876543210"
-                            class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder:text-zinc-700 text-white font-semibold">
+                        <label class="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 ml-1">Parent Phone</label>
+                        <input type="text" id="regParentPhone" placeholder="Optional" class="w-full bg-[#0B0F1A] border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all text-white font-semibold">
                     </div>
 
-                    <div class="pt-6">
-                        <button type="submit" id="regBtn"
-                            class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-brand-500/20 flex items-center justify-center gap-3">
+                    <div class="pt-4">
+                        <button type="button" id="startCamBtn" class="w-full py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl font-bold text-xs uppercase tracking-widest transition-all border border-white/5 mb-4">
+                            Start Browser Camera
+                        </button>
+                        <button type="submit" id="regBtn" disabled class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-brand-500/20 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
                             <i data-lucide="scan-face" class="w-5 h-5"></i>
-                            Initialize AI Scanner
+                            Capture & Enroll
                         </button>
                     </div>
                 </form>
+            </div>
 
-                <div id="regStatus" class="mt-8 hidden p-6 rounded-2xl border-2 transition-all duration-300">
+            <!-- Right Panel: Camera Preview -->
+            <div class="lg:col-span-3 p-10 bg-black/20 flex flex-col items-center justify-center relative">
+                <div class="relative w-full aspect-video max-w-lg rounded-3xl bg-black border-2 border-white/5 overflow-hidden shadow-2xl group">
+                    <video id="videoPreview" autoplay playsinline class="w-full h-full object-cover grayscale transition-all duration-700"></video>
+                    <canvas id="captureCanvas" class="hidden"></canvas>
+                    
+                    <!-- Scan Progress Overlay -->
+                    <div id="scanOverlay" class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center opacity-0 transition-opacity">
+                        <div class="w-64 h-2 bg-white/10 rounded-full mb-4 overflow-hidden">
+                            <div id="scanProgress" class="h-full bg-brand-500 w-0 transition-all duration-300"></div>
+                        </div>
+                        <p id="scanLabel" class="text-[10px] font-black text-white uppercase tracking-[0.3em]">Capturing Biometrics (0/15)</p>
+                    </div>
+
+                    <!-- Face Guide -->
+                    <div class="absolute inset-0 border-[3rem] border-black/40 pointer-events-none">
+                        <div class="w-full h-full border-2 border-brand-500/30 rounded-[20%] dashed-border"></div>
+                    </div>
+                </div>
+
+                <div id="regStatus" class="mt-8 w-full max-w-lg hidden p-6 rounded-2xl border-2 transition-all">
                     <div class="flex items-start gap-4">
                         <div id="statusIcon" class="p-2 rounded-xl"></div>
                         <div>
@@ -93,70 +91,120 @@
                     </div>
                 </div>
             </div>
-        </div>
     </div>
 </div>
 
+<style>
+    .dashed-border { border-style: dashed; animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.3; } }
+</style>
+
 <script>
-    document.getElementById('regForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = document.getElementById('regBtn');
-        const status = document.getElementById('regStatus');
-        const statusIcon = document.getElementById('statusIcon');
-        const statusHeading = document.getElementById('statusHeading');
-        const statusMsg = document.getElementById('statusMsg');
-        
-        const formData = new FormData();
-        formData.append('name', document.getElementById('regName').value);
-        formData.append('role', document.getElementById('regRole').value);
-        formData.append('class_name', document.getElementById('regClass').value);
-        formData.append('parent_phone', document.getElementById('regParentPhone').value);
+    function speak(text) {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'hi-IN';
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+    }
 
+    const video = document.getElementById('videoPreview');
+    const canvas = document.getElementById('captureCanvas');
+    const startBtn = document.getElementById('startCamBtn');
+    const regBtn = document.getElementById('regBtn');
+    const scanOverlay = document.getElementById('scanOverlay');
+    const scanProgress = document.getElementById('scanProgress');
+    const scanLabel = document.getElementById('scanLabel');
+    const status = document.getElementById('regStatus');
+    
+    let stream = null;
+    let frames = [];
+
+    // Security Check
+    if (!window.isSecureContext && window.location.hostname !== 'localhost') {
+        document.getElementById('secure-warn').classList.remove('hidden');
+        startBtn.disabled = true;
+        startBtn.innerText = "HTTPS Required for Camera";
+    }
+
+    startBtn.onclick = async () => {
         try {
-            btn.disabled = true;
-            btn.classList.add('opacity-50', 'cursor-not-allowed');
-            btn.innerHTML = '<span>Processing...</span>';
-            
-            status.className = "mt-8 p-6 rounded-2xl border-2 bg-brand-500/10 border-brand-500/20 flex items-center";
-            status.classList.remove('hidden');
-            statusIcon.className = "p-2 rounded-xl bg-brand-500/20 text-brand-400";
-            statusIcon.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>';
-            statusHeading.className = "font-bold text-sm text-white";
-            statusHeading.innerText = "Camera Initializing";
-            statusMsg.className = "text-xs text-zinc-400";
-            statusMsg.innerText = "Please check your server screen for the camera view. Look directly at the camera and press 'C' to capture.";
-            lucide.createIcons();
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+            video.srcObject = stream;
+            video.classList.remove('grayscale');
+            startBtn.classList.add('hidden');
+            regBtn.disabled = false;
+        } catch (err) {
+            alert("Camera Error: " + err.message);
+        }
+    };
 
-            const response = await fetch('/register', { method: 'POST', body: formData });
-            const result = await response.text();
+    document.getElementById('regForm').onsubmit = async (e) => {
+        e.preventDefault();
+        if (!stream) return;
+
+        const name = document.getElementById('regName').value;
+        const role = document.getElementById('regRole').value;
+        const className = document.getElementById('regClass').value;
+        const phone = document.getElementById('regParentPhone').value;
+
+        regBtn.disabled = true;
+        scanOverlay.style.opacity = '1';
+        frames = [];
+
+        // Capture 15 frames
+        for (let i = 1; i <= 15; i++) {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0);
+            frames.push(canvas.toDataURL('image/jpeg', 0.8));
             
-            if (response.ok) {
-                status.className = "mt-8 p-6 rounded-2xl border-2 bg-emerald-500/10 border-emerald-500/20";
-                statusIcon.className = "p-2 rounded-xl bg-emerald-500/20 text-emerald-400";
-                statusIcon.innerHTML = '<i data-lucide="check-circle" class="w-5 h-5"></i>';
-                statusHeading.className = "font-bold text-sm text-emerald-400";
-                statusHeading.innerText = "Success!";
-                statusMsg.className = "text-xs text-emerald-500/80";
-                statusMsg.innerText = result;
+            const p = (i / 15) * 100;
+            scanProgress.style.width = p + '%';
+            scanLabel.innerText = `Capturing Biometrics (${i}/15)`;
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        scanLabel.innerText = "Extracting Face Signatures...";
+        
+        try {
+            const response = await fetch('/api/browser_register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    name, role, class_name: className, parent_phone: phone,
+                    images: frames 
+                })
+            });
+            const result = await response.json();
+
+            status.classList.remove('hidden');
+            if (result.status === 'success') {
+                status.className = "mt-8 w-full max-w-lg p-6 rounded-2xl border-2 bg-emerald-500/10 border-emerald-500/20";
+                document.getElementById('statusIcon').innerHTML = '<i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>';
+                document.getElementById('statusHeading').innerText = "Registration Complete";
+                document.getElementById('statusMsg').innerText = result.message;
+                
+                // Voice Feedback
+                speak(result.message);
+                
                 document.getElementById('regForm').reset();
             } else {
-                status.className = "mt-8 p-6 rounded-2xl border-2 bg-red-500/10 border-red-500/20";
-                statusIcon.className = "p-2 rounded-xl bg-red-500/20 text-red-400";
-                statusIcon.innerHTML = '<i data-lucide="x-circle" class="w-5 h-5"></i>';
-                statusHeading.className = "font-bold text-sm text-red-400";
-                statusHeading.innerText = "Registration Failed";
-                statusMsg.className = "text-xs text-red-500/80";
-                statusMsg.innerText = result;
+                status.className = "mt-8 w-full max-w-lg p-6 rounded-2xl border-2 bg-red-500/10 border-red-500/20";
+                document.getElementById('statusIcon').innerHTML = '<i data-lucide="x-circle" class="w-5 h-5 text-red-400"></i>';
+                document.getElementById('statusHeading').innerText = "Error";
+                document.getElementById('statusMsg').innerText = result.message;
             }
         } catch (err) {
-            status.innerText = "Error: " + err.message;
+            console.error(err);
         } finally {
-            btn.disabled = false;
-            btn.classList.remove('opacity-50', 'cursor-not-allowed');
-            btn.innerHTML = '<i data-lucide="scan-face" class="w-5 h-5"></i>Initialize AI Scanner';
-            lucide.createIcons();
+            scanOverlay.style.opacity = '0';
+            regBtn.disabled = false;
         }
-    });
+        lucide.createIcons();
+    };
     lucide.createIcons();
 </script>
 {% endblock %}

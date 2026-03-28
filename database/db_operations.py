@@ -13,13 +13,17 @@ except ImportError:
 import time
 
 def connect_db():
+    use_cloud_env = os.getenv("USE_CLOUD", str(cloud_config.USE_CLOUD)).lower() == "true"
     retries = 3
     last_error = "Unknown"
+    
     for i in range(retries):
-        if cloud_config.USE_CLOUD:
+        if use_cloud_env:
             try:
+                import psycopg2
+                conn_str = os.getenv("DB_CONNECTION_STRING", cloud_config.DB_CONNECTION_STRING)
                 # Force a short timeout so we don't hang the server
-                conn = psycopg2.connect(cloud_config.DB_CONNECTION_STRING, connect_timeout=10)
+                conn = psycopg2.connect(conn_str, connect_timeout=10)
                 return conn
             except Exception as e:
                 last_error = str(e)
@@ -29,17 +33,20 @@ def connect_db():
         else:
             return sqlite3.connect(DB_PATH)
             
-    # If we are here, it means all retries failed or it's local
-    if cloud_config.USE_CLOUD:
-        raise Exception(f"CRITICAL: Supabase Connection Failed. Error: {last_error}. Link Used: {cloud_config.DB_CONNECTION_STRING.split('@')[-1]}")
+    # If we are here, it means all retries failed
+    if use_cloud_env:
+        conn_str = os.getenv("DB_CONNECTION_STRING", cloud_config.DB_CONNECTION_STRING)
+        raise Exception(f"CRITICAL: Supabase Connection Failed after {retries} retries. Error: {last_error}. Using: {conn_str.split('@')[-1]}")
     return sqlite3.connect(DB_PATH)
 
 def get_placeholder():
-    return "%s" if cloud_config.USE_CLOUD else "?"
+    use_cloud_env = os.getenv("USE_CLOUD", str(cloud_config.USE_CLOUD)).lower() == "true"
+    return "%s" if use_cloud_env else "?"
 
 def get_table(name):
     """Postgres tables are lowercase in Supabase schema."""
-    if cloud_config.USE_CLOUD:
+    use_cloud_env = os.getenv("USE_CLOUD", str(cloud_config.USE_CLOUD)).lower() == "true"
+    if use_cloud_env:
         return name.lower()
     return name
 
@@ -65,12 +72,43 @@ def add_user(user_id, name, org_id=1, role="Student", class_name="N/A", parent_p
     finally:
         conn.close()
 
+def add_user_db(name, role, class_name, parent_phone, org_id):
+    """Inserts a user and returns the auto-generated ID."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("Users")
+    user_id = None
+    try:
+        use_cloud_env = os.getenv("USE_CLOUD", str(cloud_config.USE_CLOUD)).lower() == "true"
+        if use_cloud_env:
+            cursor.execute(f"INSERT INTO {tbl} (name, role, class_name, parent_phone, org_id) VALUES ({q}, {q}, {q}, {q}, {q}) RETURNING id", 
+                           (name, role, class_name, parent_phone, org_id))
+            row = cursor.fetchone()
+            user_id = row[0] if row else None
+        else:
+            cursor.execute(f"INSERT INTO {tbl} (name, role, class_name, parent_phone, org_id) VALUES (?, ?, ?, ?, ?)", 
+                           (name, role, class_name, parent_phone, org_id))
+            user_id = cursor.lastrowid
+        conn.commit()
+        return user_id
+    finally:
+        conn.close()
+
+
 def mark_attendance_db(user_id, org_id, date_str, time_str):
     conn = connect_db()
     cursor = conn.cursor()
     q = get_placeholder()
     tbl = get_table("Attendance")
+    u_tbl = get_table("Users")
     try:
+        # NEW: Check if user exists to avoid Foreign Key errors
+        cursor.execute(f"SELECT id FROM {u_tbl} WHERE id={q}", (user_id,))
+        if not cursor.fetchone():
+            print(f"[ERROR] User ID {user_id} not found in database. Biometrics might be orphaned.")
+            return False
+
         # Check if already marked today for this org
         cursor.execute(f"SELECT * FROM {tbl} WHERE user_id={q} AND org_id={q} AND date={q}", (user_id, org_id, date_str))
         if not cursor.fetchone():
@@ -176,14 +214,19 @@ def register_organization(name, email, password):
     q = get_placeholder()
     tbl = get_table("Organizations")
     try:
-        cursor.execute(f"INSERT INTO {tbl} (name, email, password) VALUES ({q}, {q}, {q})", (name, email, password))
-        conn.commit()
         if cloud_config.USE_CLOUD:
-            # Postgres doesn't have lastrowid, use RETURNING if needed or query
-            cursor.execute(f"SELECT id FROM {tbl} WHERE email={q}", (email,))
-            return cursor.fetchone()[0]
-        return cursor.lastrowid
-    except Exception:
+            # PostgreSQL: use RETURNING to avoid separate SELECT
+            cursor.execute(f"INSERT INTO {tbl} (name, email, password, recognition_threshold) VALUES ({q}, {q}, {q}, 0.45) RETURNING id", (name, email, password))
+            row = cursor.fetchone()
+            conn.commit()
+            return row[0] if row else None
+        else:
+            # SQLite
+            cursor.execute(f"INSERT INTO {tbl} (name, email, password, recognition_threshold) VALUES ({q}, {q}, {q}, 0.45)", (name, email, password))
+            conn.commit()
+            return cursor.lastrowid
+    except Exception as e:
+        print(f"[DB ERROR] register_organization failed: {e}")
         return None
     finally:
         conn.close()
@@ -193,17 +236,17 @@ def get_organization_by_login(email, password):
     cursor = conn.cursor()
     q = get_placeholder()
     tbl = get_table("Organizations")
-    # Using LOWER() for case-insensitive email matching
+    # Using LOWER() and indexing would be best in DB but this ensures app-level consistency
     cursor.execute(f"SELECT id, name, camera_index, recognition_threshold FROM {tbl} WHERE LOWER(email)=LOWER({q}) AND password={q}", (email, password))
     org = cursor.fetchone()
     conn.close()
     
     if org:
-        # Convert tuple to list to modify, then back to tuple
-        # This fixes 'Decimal' serialization errors in Flask sessions/jsonify
         org_list = list(org)
-        if len(org_list) >= 4 and org_list[3] is not None:
-            org_list[3] = float(org_list[3])
+        # Ensure camera_index is string and threshold is float with safe defaults
+        if len(org_list) >= 4:
+            org_list[2] = str(org_list[2]) if org_list[2] is not None else "0"
+            org_list[3] = float(org_list[3]) if org_list[3] is not None else 0.45
         return tuple(org_list)
         
     return org
@@ -234,7 +277,7 @@ def get_org_settings(org_id):
     cursor.execute(f"SELECT camera_index, recognition_threshold FROM {tbl} WHERE id={q}", (org_id,))
     row = cursor.fetchone()
     conn.close()
-    return row if row else (0, 1.2)
+    return row if row else ("0", 0.45)
 
 def get_org_camera_index(org_id):
     """Backward compatibility wrapper. Prioritizes Cameras table."""
@@ -294,13 +337,30 @@ def get_org_backup_data(org_id):
     return {"users": users, "attendance": attendance}
 
 def get_org_cameras(org_id):
-    """Fetches all cameras for an organization."""
+    """Fetches all cameras for an organization. Auto-creates first camera if empty."""
     conn = connect_db()
     cursor = conn.cursor()
     q = get_placeholder()
     tbl = get_table("Cameras")
     cursor.execute(f"SELECT id, source, label, is_active FROM {tbl} WHERE org_id={q}", (org_id,))
     cameras = cursor.fetchall()
+    
+    if not cameras:
+        # Fallback: Migration logic
+        # Get default from Organizations table
+        org_tbl = get_table("Organizations")
+        cursor.execute(f"SELECT camera_index FROM {org_tbl} WHERE id={q}", (org_id,))
+        row = cursor.fetchone()
+        default_source = row[0] if row else "0"
+        
+        # Add to Cameras table
+        cursor.execute(f"INSERT INTO {tbl} (org_id, source, label, is_active) VALUES ({q}, {q}, 'Default Camera', 1)", (org_id, default_source))
+        conn.commit()
+        
+        # Fetch again
+        cursor.execute(f"SELECT id, source, label, is_active FROM {tbl} WHERE org_id={q}", (org_id,))
+        cameras = cursor.fetchall()
+
     conn.close()
     return cameras
 
@@ -310,7 +370,8 @@ def add_org_camera(org_id, source, label="New Camera"):
     cursor = conn.cursor()
     q = get_placeholder()
     tbl = get_table("Cameras")
-    cursor.execute(f"INSERT INTO {tbl} (org_id, source, label) VALUES ({q}, {q}, {q})", (org_id, source, label))
+    source_clean = str(source).strip()
+    cursor.execute(f"INSERT INTO {tbl} (org_id, source, label, is_active) VALUES ({q}, {q}, {q}, 1)", (org_id, source_clean, label))
     conn.commit()
     conn.close()
 
@@ -426,3 +487,15 @@ def get_absent_students(org_id, date_str):
     absent = cursor.fetchall()
     conn.close()
     return absent
+
+def get_user_details(user_id):
+    """Returns basic user info (id, name, role, class_name) by ID."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    q = get_placeholder()
+    tbl = get_table("Users")
+    try:
+        cursor.execute(f"SELECT id, name, role, class_name FROM {tbl} WHERE id={q}", (user_id,))
+        return cursor.fetchone()
+    finally:
+        conn.close()
